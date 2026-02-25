@@ -90,6 +90,19 @@ PDF  →  GROBID (parse references)  →  BibTeX Lookup  →  Export .bib
 - **Fuzzy** — BibTeX found but title similarity is 0.7–0.9, may need manual check
 - **Unmatched** — No API match; fallback `@misc` entry from GROBID data
 
+### Extraction Accuracy
+
+RefBib relies on [GROBID](https://github.com/kermitt2/grobid) for PDF parsing. Extraction accuracy depends heavily on the PDF format:
+
+| PDF Type | Expected Accuracy | Notes |
+|----------|-------------------|-------|
+| Published papers (conference/journal) | ~100% | Standard layouts work best. Tested: 64/64 references extracted from a NeurIPS-style paper. |
+| arXiv preprints | ~95%+ | Generally standard formatting |
+| Anonymous submissions (e.g. ACL/ARR review copies) | ~30–60% | Line numbers, non-standard templates, and draft formatting interfere with parsing |
+| Theses, technical reports | Varies | Depends on layout complexity |
+
+**Tip:** If extraction misses references, try using the camera-ready or published version of the paper instead of a draft or review copy.
+
 ### GROBID Instance Selection
 
 Click the gear icon in the top-right corner to choose a GROBID instance. You can also check which instances are currently online. If the selected instance fails, the backend will automatically try the remaining instances as fallback.
