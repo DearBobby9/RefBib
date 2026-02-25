@@ -199,13 +199,22 @@ RefBib relies on several free, public academic services. We are grateful to thei
 cp backend/.env.example backend/.env
 ```
 
+**Backend** (`backend/.env`):
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GROBID_URL` | `https://kermitt2-grobid.hf.space` | Default GROBID API endpoint |
 | `GROBID_VERIFY_SSL` | `true` | Set `false` for self-signed certs |
 | `CROSSREF_MAILTO` | *(empty)* | Your email for CrossRef polite pool (recommended) |
 | `FRONTEND_URL` | `http://localhost:3000` | Frontend origin for CORS |
-| `SITE_PASSWORD` | *(empty)* | Set a password to require authentication before using the app. Leave empty to disable. |
+| `APP_ENV` | `development` | Set to `production` for deployed instances |
+| `SITE_PASSWORD` | *(empty)* | Require password to use the app. Leave empty to disable. |
+
+**Frontend** (environment variable on hosting platform):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Backend API URL. Set this on Vercel to point to your deployed backend. |
 
 ## Deployment
 
@@ -213,6 +222,30 @@ RefBib is deployed as two services:
 
 - **Frontend** (Next.js static site) — Vercel, Netlify, GitHub Pages, or any static host
 - **Backend** (FastAPI) — Fly.io, Render, Railway, or any Docker host
+
+### Deploying to Fly.io + Vercel
+
+<details>
+<summary>Step-by-step</summary>
+
+**Backend (Fly.io):**
+
+```bash
+cd backend
+fly launch          # Creates a new app under YOUR Fly.io account
+fly secrets set SITE_PASSWORD=your-password   # Optional
+fly secrets set FRONTEND_URL=https://your-app.vercel.app
+fly deploy
+```
+
+**Frontend (Vercel):**
+
+1. Push the repo to GitHub
+2. Import the repo in [Vercel](https://vercel.com) with root directory set to `frontend`
+3. Add environment variable: `NEXT_PUBLIC_API_URL` = `https://your-fly-app.fly.dev`
+4. Deploy
+
+</details>
 
 ### Password Protection
 
@@ -225,6 +258,21 @@ fly secrets set SITE_PASSWORD=your-password
 # Or in backend/.env for local testing
 SITE_PASSWORD=your-password
 ```
+
+### Cold Start Behavior
+
+If you deploy the backend to Fly.io with `auto_stop_machines = 'stop'` (default in `fly.toml`), the server will sleep after a period of inactivity. When a user visits the frontend, it automatically pings the backend to trigger a cold start, showing a "Connecting to server..." spinner until the backend is ready. This typically takes 2–5 seconds.
+
+### Security Note
+
+**This repository contains no secrets, passwords, or server-specific credentials.** All sensitive configuration is managed through environment variables set on your hosting platform (e.g., `fly secrets set`, Vercel environment variables). Specifically:
+
+- `fly.toml` contains only the app name and VM config — not access tokens or secrets
+- `SITE_PASSWORD`, `FRONTEND_URL`, `NEXT_PUBLIC_API_URL` are never committed to the repo
+- `.env` files are excluded by `.gitignore`
+- Default values in `config.py` all point to `localhost` or are empty strings
+
+If you fork or clone this repo, you will deploy to **your own** Fly.io/Vercel account with your own credentials. Nothing in the source code connects to the original author's infrastructure.
 
 ## Tech Stack
 
