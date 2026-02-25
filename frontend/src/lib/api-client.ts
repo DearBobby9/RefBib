@@ -36,6 +36,24 @@ export async function fetchGrobidInstances(): Promise<GrobidInstancesResponse> {
   return response.json();
 }
 
+export async function checkAuthRequired(): Promise<boolean> {
+  const response = await fetch(`${API_BASE}/api/auth/status`);
+  if (!response.ok) return false;
+  const data: { required: boolean } = await response.json();
+  return data.required;
+}
+
+export async function verifyPassword(password: string): Promise<boolean> {
+  const response = await fetch(`${API_BASE}/api/verify-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (!response.ok) return false;
+  const data: { valid: boolean } = await response.json();
+  return data.valid;
+}
+
 export async function checkGrobidHealth(
   instanceId: string,
   signal?: AbortSignal

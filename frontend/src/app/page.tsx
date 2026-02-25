@@ -6,6 +6,7 @@ import { ProgressIndicator } from "@/components/progress-indicator";
 import { ReferenceList } from "@/components/reference-list";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { useExtractReferences } from "@/hooks/use-extract-references";
+import { PasswordGate } from "@/components/password-gate";
 import { AlertCircle, BookOpen, Github, Mail, Bug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -45,6 +46,7 @@ export default function Home() {
   );
 
   return (
+    <PasswordGate>
     <main className="min-h-screen flex flex-col">
       {/* Header */}
       <header className="border-b">
@@ -168,5 +170,6 @@ export default function Home() {
         </div>
       </footer>
     </main>
+    </PasswordGate>
   );
 }

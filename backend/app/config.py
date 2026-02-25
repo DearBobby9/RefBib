@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     crossref_mailto: str = ""
     frontend_url: str = "http://localhost:3000"
     app_env: str = "development"
+    site_password: str = ""
 
     # Rate limits (requests per second)
     crossref_rps: float = 20.0
