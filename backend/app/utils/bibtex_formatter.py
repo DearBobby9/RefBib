@@ -103,14 +103,17 @@ def _looks_like_latex(value: str) -> bool:
     return False
 
 
-def _escape_bibtex(value: str) -> str:
+def _escape_bibtex(value: str, *, latex_aware: bool = True) -> str:
     """Escape special characters in BibTeX field values.
 
-    If the value contains LaTeX markup (commands, braces, math), only escape
-    characters that are BibTeX-special but not part of LaTeX structure
-    (& % # _). Otherwise, perform full escaping of all special characters.
+    If *latex_aware* is True (default) and the value contains LaTeX markup
+    (commands, braces, math), only escape characters that are BibTeX-special
+    but not part of LaTeX structure (& % # _). Otherwise, perform full
+    escaping of all special characters.
+
+    Set *latex_aware=False* for fields like DOI that should never contain LaTeX.
     """
-    if _looks_like_latex(value):
+    if latex_aware and _looks_like_latex(value):
         # Minimal escaping: only BibTeX-special chars that aren't LaTeX structural
         latex_safe_replacements = {
             "&": r"\&",
@@ -163,7 +166,7 @@ def build_fallback_bibtex(ref: ParsedReference) -> str:
         fields.append(f"  year = {{{ref.year}}}")
 
     if ref.doi:
-        fields.append(f"  doi = {{{_escape_bibtex(ref.doi)}}}")
+        fields.append(f"  doi = {{{_escape_bibtex(ref.doi, latex_aware=False)}}}")
 
     if ref.venue:
         fields.append(f"  howpublished = {{{_escape_bibtex(ref.venue)}}}")

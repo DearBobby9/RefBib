@@ -37,6 +37,9 @@ export function useExtractReferences() {
 
     setState({ stage: "uploading", data: null, error: null });
 
+    // Stage transitions are time-based estimates, not real backend events.
+    // The backend processes everything in a single request; these timers
+    // provide perceived progress while waiting for the response.
     const parsingTimer = setTimeout(() => {
       setState((s) =>
         requestIdRef.current === requestId && s.stage === "uploading"
@@ -80,6 +83,7 @@ export function useExtractReferences() {
   const reset = useCallback(() => {
     requestIdRef.current += 1;
     abortRef.current?.abort();
+    abortRef.current = null;
     setState({ stage: "idle", data: null, error: null });
   }, []);
 

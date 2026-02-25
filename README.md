@@ -205,6 +205,26 @@ cp backend/.env.example backend/.env
 | `GROBID_VERIFY_SSL` | `true` | Set `false` for self-signed certs |
 | `CROSSREF_MAILTO` | *(empty)* | Your email for CrossRef polite pool (recommended) |
 | `FRONTEND_URL` | `http://localhost:3000` | Frontend origin for CORS |
+| `SITE_PASSWORD` | *(empty)* | Set a password to require authentication before using the app. Leave empty to disable. |
+
+## Deployment
+
+RefBib is deployed as two services:
+
+- **Frontend** (Next.js static site) — Vercel, Netlify, GitHub Pages, or any static host
+- **Backend** (FastAPI) — Fly.io, Render, Railway, or any Docker host
+
+### Password Protection
+
+To restrict access to your hosted instance, set the `SITE_PASSWORD` environment variable on your backend. Users will see a password wall before they can use the app. Leave it empty to allow open access.
+
+```bash
+# Fly.io example
+fly secrets set SITE_PASSWORD=your-password
+
+# Or in backend/.env for local testing
+SITE_PASSWORD=your-password
+```
 
 ## Tech Stack
 
@@ -219,6 +239,12 @@ cd backend
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pytest
 ```
+
+## Contributing
+
+If you find RefBib helpful, please consider giving it a star on GitHub — it helps others discover the project.
+
+Bug reports and feature requests are welcome via [GitHub Issues](https://github.com/DearBobby9/RefBib/issues).
 
 ## License
 

@@ -36,7 +36,8 @@ def parse_tei_xml(xml_bytes: bytes) -> list[ParsedReference]:
         return []
 
     try:
-        root = etree.fromstring(xml_bytes)
+        parser = etree.XMLParser(resolve_entities=False, no_network=True)
+        root = etree.fromstring(xml_bytes, parser=parser)
     except etree.XMLSyntaxError as exc:
         logger.error("[GrobidXmlParser] Failed to parse XML: %s", exc)
         return []

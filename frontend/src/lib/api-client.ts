@@ -36,6 +36,13 @@ export async function fetchGrobidInstances(): Promise<GrobidInstancesResponse> {
   return response.json();
 }
 
+export async function checkServerHealth(): Promise<boolean> {
+  const response = await fetch(`${API_BASE}/api/health`, {
+    signal: AbortSignal.timeout(8000),
+  });
+  return response.ok;
+}
+
 export async function checkAuthRequired(): Promise<boolean> {
   const response = await fetch(`${API_BASE}/api/auth/status`);
   if (!response.ok) return false;

@@ -66,9 +66,7 @@ export function SettingsDialog({
   }, []);
 
   const checkAll = useCallback(async () => {
-    for (const inst of instances) {
-      await checkInstance(inst.id);
-    }
+    await Promise.allSettled(instances.map((inst) => checkInstance(inst.id)));
   }, [instances, checkInstance]);
 
   return (

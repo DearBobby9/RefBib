@@ -79,7 +79,7 @@ export function ReferenceItem({
             )}
             {reference.doi && (
               <a
-                href={`https://doi.org/${reference.doi}`}
+                href={`https://doi.org/${encodeURIComponent(reference.doi)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[10px] text-primary hover:underline"
@@ -94,6 +94,7 @@ export function ReferenceItem({
         {reference.bibtex && (
           <button
             onClick={() => setExpanded(!expanded)}
+            aria-label="Toggle BibTeX preview"
             className="shrink-0 p-1 rounded hover:bg-muted"
           >
             {expanded ? (

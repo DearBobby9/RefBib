@@ -1,5 +1,6 @@
 """Site-level password gate endpoints."""
 
+import hmac
 import logging
 
 from fastapi import APIRouter
@@ -28,7 +29,7 @@ async def verify_password(body: PasswordRequest):
     if not settings.site_password:
         return {"valid": True, "required": False}
 
-    valid = body.password == settings.site_password
+    valid = hmac.compare_digest(body.password, settings.site_password)
     if not valid:
         logger.info("[Auth] Failed password attempt")
     return {"valid": valid, "required": True}
