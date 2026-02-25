@@ -7,6 +7,7 @@ import { ReferenceList } from "@/components/reference-list";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { useExtractReferences } from "@/hooks/use-extract-references";
 import { PasswordGate } from "@/components/password-gate";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { AlertCircle, BookOpen, Github, Mail, Bug, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -67,6 +68,7 @@ export default function Home() {
               <Github className="h-4 w-4" />
             </Button>
           </a>
+          <ThemeToggle />
           <SettingsDialog
             selectedInstanceId={grobidInstanceId}
             onSelectInstanceId={setGrobidInstanceId}
