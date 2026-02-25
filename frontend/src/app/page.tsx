@@ -360,6 +360,21 @@ export default function Home() {
                 bobbyjia99@gmail.com
               </a>
             </div>
+            <div className="flex items-center gap-2 flex-wrap justify-center text-xs text-muted-foreground/80">
+              <span>
+                Designed and built by{" "}
+                <span className="font-medium text-muted-foreground">Difan (Bobby) Jia</span>
+              </span>
+              <span className="text-muted-foreground/30">|</span>
+              <a
+                href="https://x.com/KeithMaxwell99"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-foreground transition-colors"
+              >
+                X @KeithMaxwell99
+              </a>
+            </div>
           </div>
         </div>
       </footer>
