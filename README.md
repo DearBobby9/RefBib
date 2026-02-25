@@ -4,6 +4,18 @@ Extract all references from an academic PDF and get standard BibTeX entries — 
 
 Drop a PDF, get `.bib`. That's it.
 
+## Use Case
+
+Writing a paper and reading through related work? When you find a relevant published paper, drop it into RefBib to instantly grab all its references as BibTeX — no more manually searching and copying entries one by one.
+
+**Recommended workflow:**
+1. Find a related paper in your field (conference/journal version works best)
+2. Upload the PDF to RefBib
+3. Get the full reference list as BibTeX in seconds
+4. Cherry-pick the entries you need for your own bibliography
+
+This is especially useful when surveying a new topic — start from a few key papers, extract their references, and quickly build up a comprehensive `.bib` file.
+
 ## Quick Start
 
 **Prerequisites:** Python 3.11+, Node.js 18+
