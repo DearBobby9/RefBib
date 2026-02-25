@@ -4,6 +4,8 @@ Extract all references from an academic PDF and get standard BibTeX entries — 
 
 Drop a PDF, get `.bib`. That's it.
 
+**No AI, no hallucinations.** RefBib does not use large language models. Every BibTeX entry comes from verified academic databases — [CrossRef](https://www.crossref.org/), [Semantic Scholar](https://www.semanticscholar.org/), and [DBLP](https://dblp.org/) — or directly from [GROBID](https://github.com/kermitt2/grobid)'s structured PDF parse. Nothing is generated or guessed. Each result includes a match confidence indicator (Matched / Fuzzy / Unmatched) so you can judge reliability at a glance.
+
 ## Use Case
 
 Writing a paper and reading through related work? When you find a relevant published paper, drop it into RefBib to instantly grab all its references as BibTeX — no more manually searching and copying entries one by one.
