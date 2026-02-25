@@ -16,6 +16,7 @@ export interface Reference {
   citation_key: string | null;
   match_status: MatchStatus;
   match_source: MatchSource | null;
+  url: string | null;
   raw_citation: string;
 }
 

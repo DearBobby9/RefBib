@@ -20,6 +20,18 @@ GROBID_INSTANCES = [
         "description": "Official legacy instance. Often unstable.",
     },
     {
+        "id": "lfoppiano",
+        "name": "HuggingFace (lfoppiano)",
+        "url": "https://lfoppiano-grobid.hf.space",
+        "description": "Community instance. Availability may vary.",
+    },
+    {
+        "id": "qingxu98",
+        "name": "HuggingFace (qingxu98)",
+        "url": "https://qingxu98-grobid.hf.space",
+        "description": "Community instance. Availability may vary.",
+    },
+    {
         "id": "local",
         "name": "Local Docker",
         "url": "http://localhost:8070",

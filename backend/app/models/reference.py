@@ -59,3 +59,6 @@ class ResolvedReference(ParsedReference):
     match_source: Optional[MatchSource] = Field(
         default=None, description="Which API provided the BibTeX entry"
     )
+    url: Optional[str] = Field(
+        default=None, description="URL to the paper (DOI link, S2, or DBLP page)"
+    )

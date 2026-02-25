@@ -4,6 +4,7 @@ import logging
 import time
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 
 from app.config import GROBID_INSTANCES, settings
@@ -78,6 +79,29 @@ def _build_grobid_fallback_chain(selected_instance_id: str | None) -> list[str]:
     return grobid_urls
 
 
+def _grobid_failure_detail(exc: Exception) -> str:
+    """Return a user-facing detail message for GROBID upstream failures."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status >= 500:
+            return (
+                f"GROBID upstream unavailable ({status}). "
+                "Please switch GROBID instance in Settings and retry."
+            )
+        return (
+            f"GROBID returned an unexpected status ({status}). "
+            "Please retry or switch instance in Settings."
+        )
+
+    if isinstance(exc, (httpx.TimeoutException, httpx.RequestError)):
+        return (
+            "GROBID upstream unavailable (timeout/network). "
+            "Please switch GROBID instance in Settings and retry."
+        )
+
+    return "Failed to parse PDF with GROBID. The service may be temporarily unavailable."
+
+
 @router.post("/extract", response_model=ExtractResponse)
 async def extract_references(
     request: Request,
@@ -109,7 +133,7 @@ async def extract_references(
         logger.error("[Extract] GROBID parsing failed: %s", exc)
         raise HTTPException(
             status_code=502,
-            detail="Failed to parse PDF with GROBID. The service may be temporarily unavailable.",
+            detail=_grobid_failure_detail(exc),
         )
 
     # Step 2: Parse TEI XML

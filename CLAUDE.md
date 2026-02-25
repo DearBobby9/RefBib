@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Target users: researchers writing LaTeX/Overleaf papers who need to batch-collect BibTeX from reference lists.
 
 **GitHub:** https://github.com/DearBobby9/RefBib
+**Live:** https://ref-bib.vercel.app (password-protected)
 
 ## Architecture
 
@@ -63,6 +64,7 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 ### Backend (`backend/`)
 - `app/main.py` — FastAPI app entry, CORS, lifespan (httpx clients + rate limiters)
 - `app/config.py` — Settings + GROBID_INSTANCES list (4 instances)
+- `app/routers/auth.py` — `/api/verify-password`, `/api/auth/status` (hmac.compare_digest)
 - `app/routers/health.py` — `/api/health`, `/api/grobid-instances`, `/api/grobid-instances/{id}/health`
 - `app/routers/references.py` — `POST /api/extract` (PDF upload + validation + GROBID fallback chain)
 - `app/services/bibtex_assembler.py` — Waterfall orchestrator (CrossRef → S2 → DBLP → fallback)
@@ -80,6 +82,7 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 - `src/components/pdf-upload-zone.tsx` — Drag-and-drop PDF upload
 - `src/components/reference-list.tsx` — Results display with select/filter
 - `src/components/reference-item.tsx` — Individual reference card
+- `src/components/password-gate.tsx` — Auth gate with server health check + retry for cold starts
 - `src/components/settings-dialog.tsx` — GROBID instance selection + health check
 - `src/components/export-toolbar.tsx` — Export .bib / copy to clipboard
 - `src/components/filter-bar.tsx` — Filter by match status
@@ -98,7 +101,9 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 - Concurrent resolution with semaphore (`max_concurrent_lookups=10`).
 - BibTeX escaping is LaTeX-aware: detects `\commands`, `{braces}`, `$math$` and only escapes BibTeX-special chars (`& % # _`), preserving LaTeX structure.
 - Frontend health checks proxy through backend (`/api/grobid-instances/{id}/health`) to avoid CORS.
-- The tool deliberately does NOT do literature management or AI writing — it solves only the mechanical BibTeX collection problem.
+- Password gate: `SITE_PASSWORD` env var on backend, frontend-only gate (no JWT/session). `hmac.compare_digest` for timing-safe comparison.
+- Server health check on page load: auto-ping `/api/health` with 8s timeout, retry up to 5 times (3s interval) for Fly.io cold starts. Fail-closed: auth errors default to showing password wall.
+- The tool deliberately does NOT use LLMs — all BibTeX comes from verified academic databases. No hallucinations.
 
 ## Development Phases
 
@@ -107,9 +112,20 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 - **Phase 3**: Semantic topic clustering, cross-PDF citation frequency
 - **Phase 4**: Overleaf integration, Chrome extension, citation graph visualization
 
+## Deployment
+
+- **Frontend**: Vercel (auto-deploy on push to main), root dir `frontend`
+  - Env var: `NEXT_PUBLIC_API_URL=https://refbib-api.fly.dev`
+- **Backend**: Fly.io, 1 machine × 256MB (free tier), region sjc
+  - `auto_stop_machines = 'stop'`, `min_machines_running = 0` → cold starts
+  - Secrets: `SITE_PASSWORD`, `FRONTEND_URL` (set via `fly secrets set`)
+  - Deploy: `cd backend && fly deploy`
+- No secrets in repo — all config via env vars / platform secrets
+
 ## Constraints & Risks
 
 - API rate limits on CrossRef / Semantic Scholar — cache BibTeX results by DOI at scale
-- GROBID parsing degrades on non-standard layouts (workshop papers, preprints) — fallback chain mitigates
+- GROBID parsing degrades on non-standard layouts (workshop papers, anonymous submissions with line numbers) — fallback chain mitigates
+- Standard published papers: ~100% extraction. Anonymous review copies with line numbers: ~30-60%.
 - No PDF content is stored server-side; only BibTeX metadata is cached
 - Target: >95% parse success rate, >85% BibTeX match rate, <30s per PDF

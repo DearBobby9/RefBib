@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { BibtexPreview } from "./bibtex-preview";
@@ -19,6 +19,7 @@ const SOURCE_LABELS: Record<string, string> = {
   dblp: "DBLP",
   grobid_fallback: "GROBID",
 };
+const SCHOLAR_SEARCH_BASE = "https://scholar.google.com/scholar?q=";
 
 interface ReferenceItemProps {
   reference: Reference;
@@ -33,6 +34,11 @@ export function ReferenceItem({
 }: ReferenceItemProps) {
   const [expanded, setExpanded] = useState(false);
   const { label, variant } = STATUS_STYLES[reference.match_status];
+  const titleText = reference.title || reference.raw_citation || "Untitled reference";
+  const scholarSearchUrl = reference.title
+    ? `${SCHOLAR_SEARCH_BASE}${encodeURIComponent(reference.title)}`
+    : null;
+  const titleLink = reference.url || scholarSearchUrl;
 
   return (
     <div className="border rounded-lg p-3 transition-colors hover:bg-muted/30">
@@ -49,7 +55,18 @@ export function ReferenceItem({
               [{reference.index}]
             </span>
             <h3 className="text-sm font-medium leading-tight">
-              {reference.title || reference.raw_citation || "Untitled reference"}
+              {titleLink ? (
+                <a
+                  href={titleLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline underline-offset-2"
+                >
+                  {titleText}
+                </a>
+              ) : (
+                titleText
+              )}
             </h3>
           </div>
 
@@ -76,6 +93,23 @@ export function ReferenceItem({
               <span className="text-[10px] text-muted-foreground">
                 via {SOURCE_LABELS[reference.match_source] || reference.match_source}
               </span>
+            )}
+            {reference.match_status === "fuzzy" && (
+              <span className="text-xs text-muted-foreground">
+                ⚠ May not be exact match — verify before using
+              </span>
+            )}
+            {reference.match_status === "unmatched" && scholarSearchUrl && (
+              <a
+                href={scholarSearchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Search className="h-3 w-3" />
+                Search on Scholar
+              </a>
             )}
             {reference.doi && (
               <a

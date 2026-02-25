@@ -18,6 +18,8 @@ interface SettingsDialogProps {
   onSelectInstanceId: (id: string) => void;
 }
 
+const INSTANCE_HEALTH_TIMEOUT_MS = 65_000;
+
 export function SettingsDialog({
   selectedInstanceId,
   onSelectInstanceId,
@@ -56,7 +58,10 @@ export function SettingsDialog({
   const checkInstance = useCallback(async (id: string) => {
     setChecking(id);
     try {
-      const result = await checkGrobidHealth(id, AbortSignal.timeout(10000));
+      const result = await checkGrobidHealth(
+        id,
+        AbortSignal.timeout(INSTANCE_HEALTH_TIMEOUT_MS)
+      );
       setStatuses((prev) => ({ ...prev, [id]: result.reachable }));
     } catch {
       setStatuses((prev) => ({ ...prev, [id]: false }));
@@ -130,7 +135,7 @@ export function SettingsDialog({
                     ) : null}
                     {isSelected && (
                       <span className="text-xs text-primary font-medium">
-                        Active
+                        Selected
                       </span>
                     )}
                   </div>

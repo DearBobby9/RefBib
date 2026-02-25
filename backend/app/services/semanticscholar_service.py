@@ -12,7 +12,7 @@ from app.utils.text_similarity import title_similarity
 logger = logging.getLogger(__name__)
 
 _SEARCH_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
-_SEARCH_FIELDS = "title,citationStyles,externalIds,year,authors,venue"
+_SEARCH_FIELDS = "title,citationStyles,externalIds,url,year,authors,venue"
 _SEARCH_TIMEOUT = 10.0  # seconds
 
 
@@ -34,11 +34,11 @@ class SemanticScholarService:
 
     async def lookup(
         self, ref: ParsedReference
-    ) -> tuple[str, float] | None:
+    ) -> tuple[str, float, str | None] | None:
         """Search Semantic Scholar by title.
 
         Returns:
-            ``(bibtex_string, confidence)`` or ``None`` if no match with BibTeX.
+            ``(bibtex_string, confidence, url)`` or ``None`` if no match with BibTeX.
         """
         if not ref.title:
             logger.debug(
@@ -98,6 +98,7 @@ class SemanticScholarService:
         # Find best title match that has citationStyles.bibtex
         best_bibtex: str | None = None
         best_score: float = 0.0
+        best_url: str | None = None
 
         for paper in papers:
             paper_title = paper.get("title")
@@ -117,8 +118,17 @@ class SemanticScholarService:
             if not bibtex:
                 continue
 
+            paper_url = paper.get("url")
+            if not paper_url:
+                external_ids = paper.get("externalIds")
+                if isinstance(external_ids, dict):
+                    doi = external_ids.get("DOI") or external_ids.get("doi")
+                    if isinstance(doi, str) and doi.strip():
+                        paper_url = f"https://doi.org/{doi.strip()}"
+
             best_score = score
             best_bibtex = bibtex.strip()
+            best_url = paper_url
 
         if best_score < settings.fuzzy_match_threshold or not best_bibtex:
             logger.debug(
@@ -134,4 +144,4 @@ class SemanticScholarService:
             best_score,
             ref.title[:80],
         )
-        return (best_bibtex, best_score)
+        return (best_bibtex, best_score, best_url)

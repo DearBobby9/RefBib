@@ -136,7 +136,7 @@ class BibTeXAssembler:
             try:
                 result = await service.lookup(ref)
                 if result:
-                    bibtex, confidence = result
+                    bibtex, confidence, url = result
                     status = (
                         MatchStatus.MATCHED
                         if confidence >= settings.exact_match_threshold
@@ -155,6 +155,7 @@ class BibTeXAssembler:
                         citation_key=citation_key,
                         match_status=status,
                         match_source=source_type,
+                        url=url,
                     )
             except (httpx.HTTPError, httpx.TimeoutException, ValueError, KeyError):
                 logger.exception(
@@ -168,10 +169,12 @@ class BibTeXAssembler:
         )
         fallback_bibtex = build_fallback_bibtex(ref)
         citation_key = generate_citation_key(ref.authors, ref.year, ref.title)
+        fallback_url = f"https://doi.org/{ref.doi}" if ref.doi else None
         return ResolvedReference(
             **ref.model_dump(),
             bibtex=fallback_bibtex,
             citation_key=citation_key,
             match_status=MatchStatus.UNMATCHED,
             match_source=MatchSource.GROBID_FALLBACK,
+            url=fallback_url,
         )

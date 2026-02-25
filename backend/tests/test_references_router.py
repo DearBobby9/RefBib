@@ -2,10 +2,15 @@
 
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from fastapi import HTTPException
 
-from app.routers.references import _build_grobid_fallback_chain, _validate_pdf_content
+from app.routers.references import (
+    _build_grobid_fallback_chain,
+    _grobid_failure_detail,
+    _validate_pdf_content,
+)
 
 
 def test_invalid_grobid_instance_id_is_rejected():
@@ -32,3 +37,21 @@ def test_pdf_content_type_and_magic_header_validation():
     with pytest.raises(HTTPException) as exc_info:
         _validate_pdf_content(invalid_pdf, b"not-a-pdf")
     assert exc_info.value.status_code == 400
+
+
+def test_grobid_failure_detail_for_upstream_503():
+    request = httpx.Request("POST", "https://example.com/api/processReferences")
+    response = httpx.Response(503, request=request)
+    error = httpx.HTTPStatusError("503 error", request=request, response=response)
+
+    detail = _grobid_failure_detail(error)
+
+    assert "GROBID upstream unavailable (503)" in detail
+    assert "switch GROBID instance in Settings" in detail
+
+
+def test_grobid_failure_detail_for_timeout():
+    detail = _grobid_failure_detail(httpx.ReadTimeout("timeout"))
+
+    assert "GROBID upstream unavailable (timeout/network)" in detail
+    assert "switch GROBID instance in Settings" in detail

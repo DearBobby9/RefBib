@@ -37,7 +37,7 @@ class CrossRefService:
 
     async def lookup(
         self, ref: ParsedReference
-    ) -> tuple[str, float] | None:
+    ) -> tuple[str, float, str | None] | None:
         """Try to find BibTeX for *ref*.
 
         Strategy:
@@ -45,7 +45,7 @@ class CrossRefService:
             2. Otherwise search by title and return the best fuzzy match.
 
         Returns:
-            ``(bibtex_string, confidence)`` or ``None`` if nothing matched.
+            ``(bibtex_string, confidence, url)`` or ``None`` if nothing matched.
         """
         # --- 1. DOI-based lookup (high confidence) ---
         if ref.doi:
@@ -55,7 +55,7 @@ class CrossRefService:
                     "[CrossRefService] DOI lookup succeeded for doi=%s",
                     ref.doi,
                 )
-                return (bibtex, 1.0)
+                return (bibtex, 1.0, f"https://doi.org/{ref.doi}")
             logger.warning(
                 "[CrossRefService] DOI lookup failed for doi=%s, falling back to title search",
                 ref.doi,
@@ -65,13 +65,13 @@ class CrossRefService:
         if ref.title:
             result = await self._search_by_title(ref.title)
             if result:
-                bibtex, confidence = result
+                bibtex, confidence, url = result
                 logger.info(
                     "[CrossRefService] Title search matched with confidence=%.3f for title='%s'",
                     confidence,
                     ref.title[:80],
                 )
-                return (bibtex, confidence)
+                return (bibtex, confidence, url)
 
         logger.debug(
             "[CrossRefService] No match found for ref index=%d", ref.index
@@ -115,7 +115,7 @@ class CrossRefService:
 
     async def _search_by_title(
         self, title: str
-    ) -> tuple[str, float] | None:
+    ) -> tuple[str, float, str | None] | None:
         """Search CrossRef by bibliographic query and return the best matching BibTeX."""
         params: dict[str, str | int] = {
             "query.bibliographic": title,
@@ -156,6 +156,7 @@ class CrossRefService:
         # Find best title match
         best_score: float = 0.0
         best_doi: str | None = None
+        best_url: str | None = None
 
         for item in items:
             item_titles = item.get("title", [])
@@ -167,6 +168,7 @@ class CrossRefService:
             if score > best_score:
                 best_score = score
                 best_doi = item.get("DOI")
+                best_url = item.get("URL")
 
         # Check if best match meets the threshold
         if best_score < settings.fuzzy_match_threshold or not best_doi:
@@ -180,6 +182,7 @@ class CrossRefService:
         # Fetch BibTeX for the best matching DOI
         bibtex = await self._lookup_by_doi(best_doi)
         if bibtex:
-            return (bibtex, best_score)
+            resolved_url = best_url or f"https://doi.org/{best_doi}"
+            return (bibtex, best_score, resolved_url)
 
         return None

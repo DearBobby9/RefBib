@@ -36,11 +36,11 @@ class DBLPService:
 
     async def lookup(
         self, ref: ParsedReference
-    ) -> tuple[str, float] | None:
+    ) -> tuple[str, float, str | None] | None:
         """Search DBLP by title, then fetch BibTeX for the best matching record.
 
         Returns:
-            ``(bibtex_string, confidence)`` or ``None`` if no match found.
+            ``(bibtex_string, confidence, url)`` or ``None`` if no match found.
         """
         if not ref.title:
             logger.debug(
@@ -95,7 +95,7 @@ class DBLPService:
                 best_score,
                 ref.title[:80],
             )
-            return (bibtex, best_score)
+            return (bibtex, best_score, rec_url or None)
 
         return None
 

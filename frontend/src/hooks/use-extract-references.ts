@@ -18,6 +18,19 @@ interface ExtractionState {
   error: string | null;
 }
 
+function toUserFacingError(message: string): string {
+  if (message.includes("GROBID upstream unavailable (503)")) {
+    return "上游 GROBID 不可用（503）。请在右上角 Settings 切换 GROBID 实例后重试。";
+  }
+  if (
+    message.includes("GROBID upstream unavailable")
+    || message.includes("Failed to parse PDF with GROBID")
+  ) {
+    return "上游 GROBID 暂时不可用。请在右上角 Settings 切换 GROBID 实例后重试。";
+  }
+  return message;
+}
+
 export function useExtractReferences() {
   const [state, setState] = useState<ExtractionState>({
     stage: "idle",
@@ -73,7 +86,7 @@ export function useExtractReferences() {
 
       const message =
         err instanceof Error ? err.message : "An unexpected error occurred";
-      setState({ stage: "error", data: null, error: message });
+      setState({ stage: "error", data: null, error: toUserFacingError(message) });
     } finally {
       clearTimeout(parsingTimer);
       clearTimeout(resolvingTimer);
