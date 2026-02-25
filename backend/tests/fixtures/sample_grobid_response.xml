@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0"
+     xmlns:xlink="http://www.w3.org/1999/xlink">
+  <teiHeader>
+    <fileDesc>
+      <titleStmt>
+        <title level="a" type="main"/>
+      </titleStmt>
+      <publicationStmt>
+        <publisher/>
+      </publicationStmt>
+      <sourceDesc>
+        <biblStruct>
+          <analytic/>
+        </biblStruct>
+      </sourceDesc>
+    </fileDesc>
+  </teiHeader>
+  <text>
+    <body/>
+    <back>
+      <div type="references">
+        <listBibl>
+
+          <!-- Reference 1: Attention Is All You Need -->
+          <biblStruct>
+            <analytic>
+              <title level="a" type="main">Attention Is All You Need</title>
+              <author>
+                <persName>
+                  <surname>Vaswani</surname>
+                  <forename>Ashish</forename>
+                </persName>
+              </author>
+              <author>
+                <persName>
+                  <surname>Shazeer</surname>
+                  <forename>Noam</forename>
+                </persName>
+              </author>
+              <author>
+                <persName>
+                  <surname>Parmar</surname>
+                  <forename>Niki</forename>
+                </persName>
+              </author>
+              <author>
+                <persName>
+                  <surname>Uszkoreit</surname>
+                  <forename>Jakob</forename>
+                </persName>
+              </author>
+              <author>
+                <persName>
+                  <surname>Jones</surname>
+                  <forename>Llion</forename>
+                </persName>
+              </author>
+              <author>
+                <persName>
+                  <surname>Gomez</surname>
+                  <forename>Aidan N.</forename>
+                </persName>
+              </author>
+              <author>
+                <persName>
+                  <surname>Kaiser</surname>
+                  <forename>Lukasz</forename>
+                </persName>
+              </author>
+              <author>
+                <persName>
+                  <surname>Polosukhin</surname>
+                  <forename>Illia</forename>
+                </persName>
+              </author>
+              <idno type="DOI">10.48550/arXiv.1706.03762</idno>
+            </analytic>
+            <monogr>
+              <title level="m">Advances in Neural Information Processing Systems</title>
+              <imprint>
+                <date type="published" when="2017"/>
+              </imprint>
+            </monogr>
+            <note type="raw_reference">Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, L., &amp; Polosukhin, I. (2017). Attention is all you need. In Advances in Neural Information Processing Systems (pp. 5998-6008).</note>
+          </biblStruct>
+
+          <!-- Reference 2: BERT -->
+          <biblStruct>
+            <analytic>
+              <title level="a" type="main">BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding</title>
+              <author>
+                <persName>
+                  <surname>Devlin</surname>
+                  <forename>Jacob</forename>
+                </persName>
+              </author>
+              <author>
+                <persName>
+                  <surname>Chang</surname>
+                  <forename>Ming-Wei</forename>
+                </persName>
+              </author>
+              <author>
+                <persName>
+                  <surname>Lee</surname>
+                  <forename>Kenton</forename>
+                </persName>
+              </author>
+              <author>
+                <persName>
+                  <surname>Toutanova</surname>
+                  <forename>Kristina</forename>
+                </persName>
+              </author>
+              <idno type="DOI">10.18653/v1/N19-1423</idno>
+            </analytic>
+            <monogr>
+              <title level="m">Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics</title>
+              <imprint>
+                <date type="published" when="2019-06"/>
+              </imprint>
+            </monogr>
+            <note type="raw_reference">Devlin, J., Chang, M.-W., Lee, K., &amp; Toutanova, K. (2019). BERT: Pre-training of deep bidirectional transformers for language understanding. In Proceedings of NAACL-HLT 2019 (pp. 4171-4186).</note>
+          </biblStruct>
+
+          <!-- Reference 3: Minimal data (no DOI, no venue) -->
+          <biblStruct>
+            <analytic>
+              <title level="a" type="main">A Simple Method for Commonsense Reasoning</title>
+              <author>
+                <persName>
+                  <surname>Trinh</surname>
+                  <forename>Trieu H.</forename>
+                </persName>
+              </author>
+              <author>
+                <persName>
+                  <surname>Le</surname>
+                  <forename>Quoc V.</forename>
+                </persName>
+              </author>
+            </analytic>
+            <monogr>
+              <imprint>
+                <date type="published" when="2018"/>
+              </imprint>
+            </monogr>
+            <note type="raw_reference">Trinh, T. H., &amp; Le, Q. V. (2018). A simple method for commonsense reasoning. arXiv preprint arXiv:1806.02847.</note>
+          </biblStruct>
+
+        </listBibl>
+      </div>
+    </back>
+  </text>
+</TEI>

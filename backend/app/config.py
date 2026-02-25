@@ -1,0 +1,53 @@
+from pydantic_settings import BaseSettings
+
+GROBID_INSTANCES = [
+    {
+        "id": "hf-dl",
+        "name": "HuggingFace (Deep Learning)",
+        "url": "https://kermitt2-grobid.hf.space",
+        "description": "Best accuracy, DL+CRF models. Free community instance.",
+    },
+    {
+        "id": "hf-crf",
+        "name": "HuggingFace (CRF-only)",
+        "url": "https://kermitt2-grobid-crf.hf.space",
+        "description": "Faster but lower accuracy. Free community instance.",
+    },
+    {
+        "id": "science-miner",
+        "name": "Science-Miner (Legacy)",
+        "url": "https://cloud.science-miner.com/grobid",
+        "description": "Official legacy instance. Often unstable.",
+    },
+    {
+        "id": "local",
+        "name": "Local Docker",
+        "url": "http://localhost:8070",
+        "description": "Self-hosted via Docker. Most reliable.",
+    },
+]
+
+
+class Settings(BaseSettings):
+    grobid_url: str = GROBID_INSTANCES[0]["url"]
+    grobid_verify_ssl: bool = True
+    crossref_mailto: str = ""
+    frontend_url: str = "http://localhost:3000"
+    app_env: str = "development"
+
+    # Rate limits (requests per second)
+    crossref_rps: float = 20.0
+    semantic_scholar_rps: float = 8.0
+    dblp_rps: float = 5.0
+
+    # Concurrency
+    max_concurrent_lookups: int = 10
+
+    # Matching
+    fuzzy_match_threshold: float = 0.7
+    exact_match_threshold: float = 0.9
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+
+settings = Settings()
