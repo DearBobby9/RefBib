@@ -6,6 +6,12 @@ Drop a PDF, get `.bib`. That's it.
 
 **No AI, no hallucinations.** RefBib does not use large language models. Every BibTeX entry comes from verified academic databases — [CrossRef](https://www.crossref.org/), [Semantic Scholar](https://www.semanticscholar.org/), and [DBLP](https://dblp.org/) — or directly from [GROBID](https://github.com/kermitt2/grobid)'s structured PDF parse. Nothing is generated or guessed. Each result includes a match confidence indicator (Matched / Fuzzy / Unmatched) so you can judge reliability at a glance.
 
+## Try It
+
+A public hosted instance is available at **[ref-bib.vercel.app](https://ref-bib.vercel.app)**. It is password-protected to prevent abuse. To get access, follow and DM me on [Twitter/X](https://x.com/KeithMaxwell99) — I'll send you the password when I see your message.
+
+> **Note:** The public instance runs on shared free-tier infrastructure with limited capacity. For regular use, please [self-host your own instance](#quick-start) — it only takes a few minutes.
+
 ## Use Case
 
 Writing a paper and reading through related work? When you find a relevant published paper, drop it into RefBib to instantly grab all its references as BibTeX — no more manually searching and copying entries one by one.
