@@ -5,6 +5,8 @@ export type MatchSource =
   | "dblp"
   | "grobid_fallback";
 export type DedupStatus = "unique" | "merged" | "conflict";
+export type ConflictResolution = "merge" | "keep_both";
+export type GroupByMode = "none" | "venue" | "year";
 export type DiscoveryStatus = "available" | "unavailable" | "error" | "skipped";
 export type DiscoverySource = "crossref" | "semantic_scholar" | "dblp";
 
@@ -65,6 +67,8 @@ export interface WorkspaceEntry {
   source_refs: WorkspaceSourceRef[];
   occurrence_count: number;
   conflict_with: string | null;
+  override_bibtex?: string | null;
+  resolved_at?: number | null;
   created_at: number;
   updated_at: number;
 }

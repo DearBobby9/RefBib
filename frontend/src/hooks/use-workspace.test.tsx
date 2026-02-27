@@ -284,4 +284,178 @@ describe("useWorkspace", () => {
     expect(addResult?.added).toBe(1);
     expect(result.current.entries).toHaveLength(2);
   });
+
+  it("resolveConflict('keep_both') sets both entries to unique", () => {
+    const { result } = renderHook(() => useWorkspace());
+
+    act(() => {
+      result.current.addReferences({
+        paperId: "paper-1",
+        paperLabel: "paper-1.pdf",
+        references: [
+          makeReference(1, "A Survey on Transfer Learning for Deep Neural Networks"),
+        ],
+      });
+    });
+
+    act(() => {
+      result.current.addReferences({
+        paperId: "paper-2",
+        paperLabel: "paper-2.pdf",
+        references: [
+          makeReference(2, "A Survey on Transfer Learning for Deep Learning Networks"),
+        ],
+      });
+    });
+
+    const conflict = result.current.entries.find(
+      (e) => e.dedup_status === "conflict"
+    );
+    expect(conflict).toBeDefined();
+
+    act(() => {
+      result.current.resolveConflict(conflict!.id, "keep_both");
+    });
+
+    expect(result.current.entries).toHaveLength(2);
+    expect(result.current.entries.every((e) => e.dedup_status === "unique")).toBe(
+      true
+    );
+    expect(result.current.entries.every((e) => e.conflict_with === null)).toBe(
+      true
+    );
+  });
+
+  it("resolveConflict('merge') removes loser and combines source_refs", () => {
+    const { result } = renderHook(() => useWorkspace());
+
+    act(() => {
+      result.current.addReferences({
+        paperId: "paper-1",
+        paperLabel: "paper-1.pdf",
+        references: [
+          makeReference(1, "A Survey on Transfer Learning for Deep Neural Networks"),
+        ],
+      });
+    });
+
+    act(() => {
+      result.current.addReferences({
+        paperId: "paper-2",
+        paperLabel: "paper-2.pdf",
+        references: [
+          makeReference(2, "A Survey on Transfer Learning for Deep Learning Networks"),
+        ],
+      });
+    });
+
+    const conflict = result.current.entries.find(
+      (e) => e.dedup_status === "conflict"
+    );
+    expect(conflict).toBeDefined();
+
+    act(() => {
+      result.current.resolveConflict(conflict!.id, "merge");
+    });
+
+    expect(result.current.entries).toHaveLength(1);
+    expect(result.current.entries[0].dedup_status).toBe("unique");
+    expect(result.current.entries[0].source_refs.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("resolveConflict('merge') picks DOI entry as winner", () => {
+    const { result } = renderHook(() => useWorkspace());
+
+    // First add an entry without DOI.
+    act(() => {
+      result.current.addReferences({
+        paperId: "paper-1",
+        paperLabel: "paper-1.pdf",
+        references: [
+          makeReference(1, "A Survey on Transfer Learning for Deep Neural Networks"),
+        ],
+      });
+    });
+
+    // Second entry has similar title — should conflict.
+    const refWithDoi: Reference = {
+      ...makeReference(2, "A Survey on Transfer Learning for Deep Learning Networks"),
+      doi: "10.1234/survey",
+      match_status: "matched",
+    };
+    act(() => {
+      result.current.addReferences({
+        paperId: "paper-2",
+        paperLabel: "paper-2.pdf",
+        references: [refWithDoi],
+      });
+    });
+
+    const conflict = result.current.entries.find(
+      (e) => e.dedup_status === "conflict"
+    );
+    expect(conflict).toBeDefined();
+
+    act(() => {
+      result.current.resolveConflict(conflict!.id, "merge");
+    });
+
+    expect(result.current.entries).toHaveLength(1);
+    // Winner should be the DOI entry.
+    expect(result.current.entries[0].reference.doi).toBe("10.1234/survey");
+  });
+
+  it("updateEntryBibtex stores override and clears on null", () => {
+    const { result } = renderHook(() => useWorkspace());
+
+    act(() => {
+      result.current.addReferences({
+        paperId: "paper-1",
+        paperLabel: "paper-1.pdf",
+        references: [makeReference(1, "Override Test")],
+      });
+    });
+
+    const entryId = result.current.entries[0].id;
+
+    act(() => {
+      result.current.updateEntryBibtex(entryId, "@article{custom, title={Custom}}");
+    });
+
+    expect(result.current.entries[0].override_bibtex).toBe(
+      "@article{custom, title={Custom}}"
+    );
+
+    act(() => {
+      result.current.updateEntryBibtex(entryId, null);
+    });
+
+    expect(result.current.entries[0].override_bibtex).toBeNull();
+  });
+
+  it("updateEntryBibtex persists to localStorage", () => {
+    const { result } = renderHook(() => useWorkspace());
+
+    act(() => {
+      result.current.addReferences({
+        paperId: "paper-1",
+        paperLabel: "paper-1.pdf",
+        references: [makeReference(1, "Persist Override")],
+      });
+    });
+
+    const entryId = result.current.entries[0].id;
+
+    act(() => {
+      result.current.updateEntryBibtex(entryId, "@misc{edited, title={Edited}}");
+    });
+
+    const stored = window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
+    expect(stored).not.toBeNull();
+
+    const parsed = JSON.parse(stored ?? "{}");
+    expect(parsed.entries[0].override_bibtex).toBe(
+      "@misc{edited, title={Edited}}"
+    );
+  });
 });

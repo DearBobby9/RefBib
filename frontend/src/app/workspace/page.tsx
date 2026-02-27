@@ -1,19 +1,68 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { AlertTriangle, Download, FolderOpen, Trash2 } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { Download, FolderOpen, Trash2 } from "lucide-react";
 import { AppHeader } from "@/components/app-header";
+import { BibtexEditor } from "@/components/bibtex-editor";
+import { ConflictResolver } from "@/components/conflict-resolver";
+import { GroupedReferences } from "@/components/grouped-references";
 import { SiteFooter } from "@/components/site-footer";
+import { WorkspaceAnalytics } from "@/components/workspace-analytics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useExportBibtex } from "@/hooks/use-export-bibtex";
 import { useWorkspace } from "@/hooks/use-workspace";
+import { GroupByMode, WorkspaceEntry } from "@/lib/types";
 
 function dedupBadgeVariant(status: "unique" | "merged" | "conflict") {
   if (status === "conflict") return "destructive";
   if (status === "merged") return "secondary";
   return "default";
+}
+
+function WorkspaceEntryCard({
+  entry,
+  onUpdateBibtex,
+}: {
+  entry: WorkspaceEntry;
+  onUpdateBibtex: (entryId: string, bibtex: string | null) => void;
+}) {
+  const hasOverride = entry.override_bibtex != null;
+
+  return (
+    <article className="rounded-lg border p-3 space-y-1">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="font-medium text-sm">
+          {entry.reference.title || "Untitled reference"}
+        </p>
+        <div className="flex items-center gap-1.5">
+          {hasOverride && (
+            <Badge variant="outline" className="text-[10px] h-4 border-blue-400 text-blue-600 dark:text-blue-400">
+              edited
+            </Badge>
+          )}
+          <Badge variant={dedupBadgeVariant(entry.dedup_status)}>
+            {entry.dedup_status}
+          </Badge>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-xs text-muted-foreground">
+          Occurrences: {entry.occurrence_count} · Sources:{" "}
+          {entry.source_refs.length}
+        </p>
+        <BibtexEditor entry={entry} onSave={onUpdateBibtex} />
+      </div>
+    </article>
+  );
 }
 
 export default function WorkspacePage() {
@@ -22,15 +71,22 @@ export default function WorkspacePage() {
     entries,
     stats,
     clearWorkspace,
-    getAllReferences,
-    getUniqueReferences,
+    resolveConflict,
+    updateEntryBibtex,
   } = useWorkspace();
-  const { downloadBib } = useExportBibtex();
+  const { downloadWorkspaceBib } = useExportBibtex();
+  const [groupBy, setGroupBy] = useState<GroupByMode>("none");
 
-  const uniqueReferences = useMemo(() => getUniqueReferences(), [getUniqueReferences]);
-  const allReferences = useMemo(() => getAllReferences(), [getAllReferences]);
   const conflictEntries = useMemo(
     () => entries.filter((entry) => entry.dedup_status === "conflict"),
+    [entries]
+  );
+
+  const allEntriesExpanded = useMemo(
+    () =>
+      entries.flatMap((entry) =>
+        Array.from({ length: entry.occurrence_count }, () => entry)
+      ),
     [entries]
   );
 
@@ -63,6 +119,13 @@ export default function WorkspacePage() {
       titles: Array.from(record.titles),
     }));
   }, [entries]);
+
+  const renderEntry = useCallback(
+    (entry: WorkspaceEntry) => (
+      <WorkspaceEntryCard entry={entry} onUpdateBibtex={updateEntryBibtex} />
+    ),
+    [updateEntryBibtex]
+  );
 
   return (
     <main className="min-h-screen flex flex-col">
@@ -104,8 +167,8 @@ export default function WorkspacePage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => downloadBib(uniqueReferences)}
-                disabled={uniqueReferences.length === 0}
+                onClick={() => downloadWorkspaceBib(entries)}
+                disabled={entries.length === 0}
                 className="gap-1.5 min-h-11"
               >
                 <Download className="h-4 w-4" />
@@ -113,8 +176,8 @@ export default function WorkspacePage() {
               </Button>
               <Button
                 size="sm"
-                onClick={() => downloadBib(allReferences)}
-                disabled={allReferences.length === 0}
+                onClick={() => downloadWorkspaceBib(allEntriesExpanded)}
+                disabled={entries.length === 0}
                 className="gap-1.5 min-h-11"
               >
                 <Download className="h-4 w-4" />
@@ -152,28 +215,38 @@ export default function WorkspacePage() {
           </section>
         ) : (
           <>
-            <section className="space-y-2">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Unique References
-              </h3>
-              <div className="space-y-2">
-                {entries.map((entry) => (
-                  <article key={entry.id} className="rounded-lg border p-3 space-y-1">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <p className="font-medium text-sm">
-                        {entry.reference.title || "Untitled reference"}
-                      </p>
-                      <Badge variant={dedupBadgeVariant(entry.dedup_status)}>
-                        {entry.dedup_status}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Occurrences: {entry.occurrence_count} · Sources:{" "}
-                      {entry.source_refs.length}
-                    </p>
-                  </article>
-                ))}
+            <WorkspaceAnalytics entries={entries} />
+
+            <ConflictResolver
+              conflictEntries={conflictEntries}
+              allEntries={entries}
+              onResolve={resolveConflict}
+            />
+
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Unique References
+                </h3>
+                <Select
+                  value={groupBy}
+                  onValueChange={(value) => setGroupBy(value as GroupByMode)}
+                >
+                  <SelectTrigger className="w-[170px] h-8 text-xs">
+                    <SelectValue placeholder="No Grouping" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Grouping</SelectItem>
+                    <SelectItem value="venue">Group by Venue</SelectItem>
+                    <SelectItem value="year">Group by Year</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+              <GroupedReferences
+                entries={entries}
+                groupBy={groupBy}
+                renderEntry={renderEntry}
+              />
             </section>
 
             <section className="space-y-2">
@@ -199,36 +272,6 @@ export default function WorkspacePage() {
                   </details>
                 ))}
               </div>
-            </section>
-
-            <section className="space-y-2">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Conflict Queue
-              </h3>
-              {conflictEntries.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No conflict entries.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {conflictEntries.map((entry) => (
-                    <article
-                      key={entry.id}
-                      className="rounded-lg border border-amber-300/70 bg-amber-50/40 dark:border-amber-500/40 dark:bg-amber-950/20 p-3"
-                    >
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                        <p className="text-sm font-medium">
-                          {entry.reference.title || "Untitled reference"}
-                        </p>
-                      </div>
-                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                        Similar title detected. Review before merging manually.
-                      </p>
-                    </article>
-                  ))}
-                </div>
-              )}
             </section>
           </>
         )}

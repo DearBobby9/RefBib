@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ConflictResolution,
   DiscoveryCacheEntry,
   DiscoveryResult,
   Reference,
@@ -12,6 +13,7 @@ import {
   WorkspaceStoreV2,
   WorkspaceSourceRef,
 } from "@/lib/types";
+import { normalizeText, buildBigrams, titleSimilarity } from "@/lib/text-utils";
 
 const WORKSPACE_STORAGE_KEY = "refbib:workspace-v2";
 const LEGACY_WORKSPACE_STORAGE_KEY = "refbib:workspace-v1";
@@ -49,15 +51,6 @@ function normalizeDoi(value: string | null | undefined): string | null {
     .replace(/^doi:\s*/, "");
 }
 
-function normalizeText(value: string | null | undefined): string {
-  if (!value) return "";
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function extractFirstAuthor(authors: string[]): string {
   if (authors.length === 0) return "";
   const first = normalizeText(authors[0]);
@@ -80,29 +73,6 @@ function discoveryFingerprint(reference: Reference): string | null {
   if (exact) return exact;
   const fallback = normalizeText(reference.raw_citation);
   return fallback ? `raw:${fallback}` : null;
-}
-
-function buildBigrams(value: string): Set<string> {
-  const normalized = normalizeText(value).replace(/\s/g, "");
-  const grams = new Set<string>();
-  if (normalized.length < 2) return grams;
-  for (let index = 0; index < normalized.length - 1; index += 1) {
-    grams.add(normalized.slice(index, index + 2));
-  }
-  return grams;
-}
-
-function titleSimilarity(a: string | null, b: string | null): number {
-  if (!a || !b) return 0;
-  const gramsA = buildBigrams(a);
-  const gramsB = buildBigrams(b);
-  if (gramsA.size === 0 || gramsB.size === 0) return 0;
-
-  let overlap = 0;
-  for (const gram of gramsA) {
-    if (gramsB.has(gram)) overlap += 1;
-  }
-  return (2 * overlap) / (gramsA.size + gramsB.size);
 }
 
 function mergeSourceRef(
@@ -246,14 +216,32 @@ function computeStats(entries: WorkspaceEntry[]): WorkspaceStats {
 }
 
 export function useWorkspace() {
-  const [store, setStore] = useState<WorkspaceStoreV2>(() =>
-    loadWorkspaceFromStorage()
-  );
+  const [store, setStore] = useState<WorkspaceStoreV2>(createEmptyStore);
   const storeRef = useRef(store);
+  const hydratedRef = useRef(false);
+
+  // Hydrate from localStorage after mount to avoid SSR/client mismatch.
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+    const persisted = loadWorkspaceFromStorage();
+    // Only update if localStorage actually had data (avoid unnecessary render).
+    const hasPersistedData =
+      persisted.entries.length > 0 ||
+      persisted.workspaces.length > 1 ||
+      Object.keys(persisted.discovery_cache).length > 0;
+    if (hasPersistedData) {
+      storeRef.current = persisted;
+      setStore(persisted);
+    }
+  }, []);
 
   useEffect(() => {
     storeRef.current = store;
-    persistWorkspace(store);
+    // Only persist after hydration to avoid overwriting localStorage with empty store.
+    if (hydratedRef.current) {
+      persistWorkspace(store);
+    }
   }, [store]);
 
   const commitStore = useCallback((nextStore: WorkspaceStoreV2) => {
@@ -474,6 +462,135 @@ export function useWorkspace() {
     [commitStore]
   );
 
+  const resolveConflict = useCallback(
+    (entryId: string, resolution: ConflictResolution) => {
+      const previous = storeRef.current;
+      const now = Date.now();
+      const workspaceId = previous.active_workspace_id;
+      const nextEntries = [...previous.entries];
+
+      const entryIdx = nextEntries.findIndex(
+        (e) => e.id === entryId && e.workspace_id === workspaceId
+      );
+      if (entryIdx < 0) return;
+      const entry = nextEntries[entryIdx];
+      if (entry.dedup_status !== "conflict") return;
+
+      const conflictIdx = entry.conflict_with
+        ? nextEntries.findIndex(
+            (e) => e.id === entry.conflict_with && e.workspace_id === workspaceId
+          )
+        : -1;
+
+      if (resolution === "keep_both") {
+        nextEntries[entryIdx] = {
+          ...entry,
+          dedup_status: "unique",
+          conflict_with: null,
+          resolved_at: now,
+          updated_at: now,
+        };
+        if (conflictIdx >= 0) {
+          const other = nextEntries[conflictIdx];
+          if (other.dedup_status === "conflict" && other.conflict_with === entryId) {
+            nextEntries[conflictIdx] = {
+              ...other,
+              dedup_status: "unique",
+              conflict_with: null,
+              resolved_at: now,
+              updated_at: now,
+            };
+          }
+        }
+      } else {
+        // "merge": pick winner based on match quality, combine source_refs.
+        if (conflictIdx < 0) {
+          // No counterpart found — just mark unique.
+          nextEntries[entryIdx] = {
+            ...entry,
+            dedup_status: "unique",
+            conflict_with: null,
+            resolved_at: now,
+            updated_at: now,
+          };
+        } else {
+          const other = nextEntries[conflictIdx];
+          const rank = (e: WorkspaceEntry) => {
+            if (e.reference.doi) return 3;
+            if (e.reference.match_status === "matched") return 2;
+            if (e.reference.match_status === "fuzzy") return 1;
+            return 0;
+          };
+          const [winnerIdx, loserIdx] =
+            rank(other) > rank(entry)
+              ? [conflictIdx, entryIdx]
+              : [entryIdx, conflictIdx];
+          const winner = nextEntries[winnerIdx];
+          const loser = nextEntries[loserIdx];
+
+          // Merge source_refs and occurrence_count from loser into winner.
+          const mergedSourceRefs = [...winner.source_refs];
+          for (const sr of loser.source_refs) {
+            const exists = mergedSourceRefs.some(
+              (s) => s.paper_id === sr.paper_id && s.source_index === sr.source_index
+            );
+            if (!exists) mergedSourceRefs.push(sr);
+          }
+
+          nextEntries[winnerIdx] = {
+            ...winner,
+            dedup_status: "unique",
+            conflict_with: null,
+            source_refs: mergedSourceRefs,
+            occurrence_count: winner.occurrence_count + loser.occurrence_count,
+            resolved_at: now,
+            updated_at: now,
+          };
+
+          // Remove loser.
+          const loserId = loser.id;
+          nextEntries.splice(loserIdx, 1);
+
+          // Update any other entries whose conflict_with pointed to the loser.
+          for (let i = 0; i < nextEntries.length; i++) {
+            if (nextEntries[i].conflict_with === loserId) {
+              nextEntries[i] = {
+                ...nextEntries[i],
+                conflict_with: null,
+                dedup_status: "unique",
+                updated_at: now,
+              };
+            }
+          }
+        }
+      }
+
+      commitStore({
+        ...previous,
+        entries: nextEntries,
+        workspaces: previous.workspaces.map((ws) =>
+          ws.id === workspaceId ? { ...ws, updated_at: now } : ws
+        ),
+        updated_at: now,
+      });
+    },
+    [commitStore]
+  );
+
+  const updateEntryBibtex = useCallback(
+    (entryId: string, bibtex: string | null) => {
+      const previous = storeRef.current;
+      const now = Date.now();
+      const nextEntries = previous.entries.map((entry) =>
+        entry.id === entryId
+          ? { ...entry, override_bibtex: bibtex, updated_at: now }
+          : entry
+      );
+      commitStore({ ...previous, entries: nextEntries, updated_at: now });
+    },
+    [commitStore]
+  );
+
   const getUniqueReferences = useCallback(
     () => entries.map((entry) => entry.reference),
     [entries]
@@ -494,6 +611,8 @@ export function useWorkspace() {
     stats,
     addReferences,
     clearWorkspace,
+    resolveConflict,
+    updateEntryBibtex,
     getCachedDiscovery,
     cacheDiscoveryResult,
     getUniqueReferences,
