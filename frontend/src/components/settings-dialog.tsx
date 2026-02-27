@@ -1,7 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Settings, Server, CircleCheck, CircleX, Loader2, AlertTriangle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Settings,
+  Server,
+  CircleCheck,
+  CircleX,
+  Clock,
+  Loader2,
+  AlertTriangle,
+  ChevronDown,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,15 +19,30 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { checkGrobidHealth, fetchGrobidInstances } from "@/lib/api-client";
 import { GrobidInstance } from "@/lib/types";
+import { DEFAULT_GROBID_INSTANCE_ID } from "@/lib/constants";
 
 interface SettingsDialogProps {
   selectedInstanceId: string;
   onSelectInstanceId: (id: string) => void;
 }
 
+// Hard abort for the underlying fetch — no point waiting longer than this.
 const INSTANCE_HEALTH_TIMEOUT_MS = 65_000;
+// UX timeout: if a check takes longer than this, show "timeout" immediately
+// but keep the background fetch running so late results still update the UI.
+const UX_TIMEOUT_MS = 10_000;
+
+// The primary instance ID that gets top-tier treatment
+const PRIMARY_INSTANCE_ID = DEFAULT_GROBID_INSTANCE_ID;
+
+type InstanceStatus = boolean | "timeout" | null;
 
 export function SettingsDialog({
   selectedInstanceId,
@@ -29,12 +53,16 @@ export function SettingsDialog({
   const [defaultInstanceId, setDefaultInstanceId] = useState("");
   const [checking, setChecking] = useState<string | null>(null);
   const [autoSelecting, setAutoSelecting] = useState(false);
-  const [statuses, setStatuses] = useState<Record<string, boolean | null>>({});
+  const [statuses, setStatuses] = useState<Record<string, InstanceStatus>>({});
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [communityOpen, setCommunityOpen] = useState(false);
   const [autoSelectMessage, setAutoSelectMessage] = useState<{
     type: "success" | "warning";
     text: string;
   } | null>(null);
+  // Track late arrivals for autoSelectAvailable: if a background probe returns
+  // reachable after autoSelect already finished, auto-select it.
+  const autoSelectDoneRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,33 +102,77 @@ export function SettingsDialog({
     }
   }, [instances, selectedInstanceId, defaultInstanceId, onSelectInstanceId]);
 
-  const probeInstance = useCallback(async (id: string): Promise<boolean> => {
-    try {
-      const result = await checkGrobidHealth(
+  // Split instances into primary and community
+  const primaryInstance = instances.find((i) => i.id === PRIMARY_INSTANCE_ID);
+  const communityInstances = instances.filter(
+    (i) => i.id !== PRIMARY_INSTANCE_ID
+  );
+
+  // Fire-and-forget background fetch. Returns a "UX result" within UX_TIMEOUT_MS
+  // via Promise.race, but the real fetch keeps running and updates status when done.
+  const probeInstance = useCallback(
+    (id: string): Promise<boolean> => {
+      // The real fetch — runs to completion regardless of the UX timer.
+      const fetchPromise = checkGrobidHealth(
         id,
         AbortSignal.timeout(INSTANCE_HEALTH_TIMEOUT_MS)
-      );
-      const reachable = result.reachable;
-      setStatuses((prev) => ({ ...prev, [id]: reachable }));
-      return reachable;
-    } catch {
-      setStatuses((prev) => ({ ...prev, [id]: false }));
-      return false;
-    }
-  }, []);
+      )
+        .then((result) => {
+          const reachable = result.reachable;
+          setStatuses((prev) => ({ ...prev, [id]: reachable }));
+          // Late arrival during autoSelect: if reachable and autoSelect already
+          // finished without finding anything, auto-select this one.
+          if (reachable && autoSelectDoneRef.current) {
+            autoSelectDoneRef.current = false;
+            onSelectInstanceId(id);
+            const name = instances.find((inst) => inst.id === id)?.name ?? id;
+            setAutoSelectMessage({
+              type: "success",
+              text: `Late arrival — selected: ${name}.`,
+            });
+          }
+          return reachable;
+        })
+        .catch(() => {
+          setStatuses((prev) => {
+            // Don't overwrite a late-arriving true with false.
+            if (prev[id] === true) return prev;
+            return { ...prev, [id]: false };
+          });
+          return false;
+        });
 
-  const checkInstance = useCallback(async (id: string) => {
-    setAutoSelectMessage(null);
-    setChecking(id);
-    try {
+      // UX timer — if the fetch hasn't resolved within UX_TIMEOUT_MS, return
+      // false immediately and mark as "timeout". The fetch continues in background.
+      const uxTimer = new Promise<boolean>((resolve) => {
+        setTimeout(() => {
+          setStatuses((prev) => {
+            // Only set timeout if not already resolved.
+            if (prev[id] != null) return prev;
+            return { ...prev, [id]: "timeout" };
+          });
+          resolve(false);
+        }, UX_TIMEOUT_MS);
+      });
+
+      return Promise.race([fetchPromise, uxTimer]);
+    },
+    [instances, onSelectInstanceId]
+  );
+
+  const checkInstance = useCallback(
+    async (id: string) => {
+      setAutoSelectMessage(null);
+      setChecking(id);
       await probeInstance(id);
-    } finally {
-      setChecking(null);
-    }
-  }, [probeInstance]);
+      setChecking((prev) => (prev === id ? null : prev));
+    },
+    [probeInstance]
+  );
 
   const autoSelectAvailable = useCallback(async () => {
     setAutoSelectMessage(null);
+    autoSelectDoneRef.current = false;
     if (instancesLoading) {
       setAutoSelectMessage({
         type: "warning",
@@ -113,44 +185,128 @@ export function SettingsDialog({
         type: "warning",
         text: fetchError
           ? "Failed to load instance list. Please retry or configure Local Docker."
-          : "No instance available. Recommended: run Local Docker and select Local Docker.",
+          : "No instance available.",
       });
       return;
     }
 
     setAutoSelecting(true);
     try {
-      for (const inst of instances) {
-        setChecking(inst.id);
-        const reachable = await probeInstance(inst.id);
+      // Always try primary instance first
+      if (primaryInstance) {
+        setChecking(primaryInstance.id);
+        const reachable = await probeInstance(primaryInstance.id);
         if (reachable) {
-          onSelectInstanceId(inst.id);
+          onSelectInstanceId(primaryInstance.id);
           setAutoSelectMessage({
             type: "success",
-            text: `Selected available instance: ${inst.name}.`,
+            text: `Selected: ${primaryInstance.name}.`,
           });
           return;
         }
       }
 
+      // Primary unavailable — try community instances
+      for (const inst of communityInstances) {
+        setChecking(inst.id);
+        const reachable = await probeInstance(inst.id);
+        if (reachable) {
+          onSelectInstanceId(inst.id);
+          setCommunityOpen(true);
+          setAutoSelectMessage({
+            type: "success",
+            text: `Primary unavailable. Selected fallback: ${inst.name}.`,
+          });
+          return;
+        }
+      }
+
+      // All timed out or failed within the UX window — but background fetches
+      // are still running. If one comes back reachable, autoSelectDoneRef
+      // tells the probeInstance callback to auto-select it.
+      autoSelectDoneRef.current = true;
       setAutoSelectMessage({
         type: "warning",
-        text:
-          "No instance available. Recommended: run Local Docker (`docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf`) and select Local Docker.",
+        text: "No instance responded in time. Background checks are still running — if one comes back online it will be auto-selected.",
       });
     } finally {
       setChecking(null);
       setAutoSelecting(false);
     }
-  }, [instances, instancesLoading, fetchError, onSelectInstanceId, probeInstance]);
+  }, [
+    instances,
+    instancesLoading,
+    fetchError,
+    primaryInstance,
+    communityInstances,
+    onSelectInstanceId,
+    probeInstance,
+  ]);
 
   const checkAll = useCallback(async () => {
     setAutoSelectMessage(null);
     if (instancesLoading || instances.length === 0) {
       return;
     }
-    await Promise.allSettled(instances.map((inst) => checkInstance(inst.id)));
-  }, [instancesLoading, instances, checkInstance]);
+    // Fire all probes concurrently — each has its own UX timeout.
+    await Promise.allSettled(instances.map((inst) => probeInstance(inst.id)));
+  }, [instancesLoading, instances, probeInstance]);
+
+  const renderInstanceCard = (
+    inst: GrobidInstance,
+    options?: { hideUrl?: boolean; isPrimary?: boolean }
+  ) => {
+    const isSelected = selectedInstanceId === inst.id;
+    const status = statuses[inst.id];
+    const isChecking = checking === inst.id;
+
+    return (
+      <button
+        key={inst.id}
+        onClick={() => onSelectInstanceId(inst.id)}
+        className={`w-full text-left rounded-lg border p-3 transition-colors ${
+          isSelected
+            ? "border-primary bg-primary/5"
+            : "border-border hover:border-muted-foreground/50"
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">{inst.name}</span>
+            {inst.id === defaultInstanceId && (
+              <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">
+                default
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            {isChecking ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            ) : status === true ? (
+              <CircleCheck className="h-3.5 w-3.5 text-green-600" />
+            ) : status === "timeout" ? (
+              <Clock className="h-3.5 w-3.5 text-amber-500" />
+            ) : status === false ? (
+              <CircleX className="h-3.5 w-3.5 text-destructive" />
+            ) : null}
+            {isSelected && (
+              <span className="text-xs text-primary font-medium">
+                Selected
+              </span>
+            )}
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {inst.description}
+        </p>
+        {!options?.hideUrl && (
+          <p className="text-[10px] text-muted-foreground/60 font-mono mt-0.5">
+            {inst.url}
+          </p>
+        )}
+      </button>
+    );
+  };
 
   return (
     <Dialog>
@@ -208,54 +364,36 @@ export function SettingsDialog({
               <p className="text-xs text-destructive">{fetchError}</p>
             </div>
           )}
-          {instances.map((inst) => {
-            const isSelected = selectedInstanceId === inst.id;
-            const status = statuses[inst.id];
-            const isChecking = checking === inst.id;
 
-            return (
-              <button
-                key={inst.id}
-                onClick={() => onSelectInstanceId(inst.id)}
-                className={`w-full text-left rounded-lg border p-3 transition-colors ${
-                  isSelected
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-muted-foreground/50"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{inst.name}</span>
-                    {inst.id === defaultInstanceId && (
-                      <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
-                        default
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {isChecking ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                    ) : status === true ? (
-                      <CircleCheck className="h-3.5 w-3.5 text-green-600" />
-                    ) : status === false ? (
-                      <CircleX className="h-3.5 w-3.5 text-destructive" />
-                    ) : null}
-                    {isSelected && (
-                      <span className="text-xs text-primary font-medium">
-                        Selected
-                      </span>
-                    )}
-                  </div>
+          {/* Primary instance — always visible */}
+          {primaryInstance &&
+            renderInstanceCard(primaryInstance, {
+              hideUrl: true,
+              isPrimary: true,
+            })}
+
+          {/* Community instances — collapsible */}
+          {communityInstances.length > 0 && (
+            <Collapsible open={communityOpen} onOpenChange={setCommunityOpen}>
+              <CollapsibleTrigger className="flex w-full items-center gap-2 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${
+                    communityOpen ? "" : "-rotate-90"
+                  }`}
+                />
+                <span>
+                  Community instances ({communityInstances.length})
+                </span>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="space-y-2 pt-1">
+                  {communityInstances.map((inst) =>
+                    renderInstanceCard(inst)
+                  )}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {inst.description}
-                </p>
-                <p className="text-[10px] text-muted-foreground/60 font-mono mt-0.5">
-                  {inst.url}
-                </p>
-              </button>
-            );
-          })}
+              </CollapsibleContent>
+            </Collapsible>
+          )}
         </div>
 
         <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -264,10 +402,10 @@ export function SettingsDialog({
             size="sm"
             onClick={checkAll}
             disabled={
-              checking !== null
-              || autoSelecting
-              || instancesLoading
-              || instances.length === 0
+              checking !== null ||
+              autoSelecting ||
+              instancesLoading ||
+              instances.length === 0
             }
             className="w-full"
           >

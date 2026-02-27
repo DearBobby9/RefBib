@@ -3,9 +3,9 @@ from pydantic_settings import BaseSettings
 GROBID_INSTANCES = [
     {
         "id": "self-hosted",
-        "name": "Self-hosted (Tailscale)",
+        "name": "Hosted by Difan (Bobby) Jia",
         "url": "http://localhost:8070",
-        "description": "Self-hosted GROBID on Mac Studio via Tailscale. Most reliable.",
+        "description": "Dedicated GROBID CRF instance. Fastest and most reliable.",
     },
     {
         "id": "hf-dl",
@@ -39,9 +39,9 @@ GROBID_INSTANCES = [
     },
     {
         "id": "local",
-        "name": "Local Docker (dev)",
+        "name": "Local Docker",
         "url": "http://localhost:8070",
-        "description": "Local Docker for development. Same as self-hosted in production.",
+        "description": "Self-hosted via Docker for local development.",
     },
 ]
 
