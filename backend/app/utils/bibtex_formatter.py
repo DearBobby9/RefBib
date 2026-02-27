@@ -139,6 +139,117 @@ def _escape_bibtex(value: str, *, latex_aware: bool = True) -> str:
     return "".join(replacements.get(char, char) for char in value)
 
 
+_CROSSREF_TYPE_MAP: dict[str, str] = {
+    "journal-article": "article",
+    "proceedings-article": "inproceedings",
+    "book-chapter": "incollection",
+    "book": "book",
+    "edited-book": "book",
+    "monograph": "book",
+    "dissertation": "phdthesis",
+    "report": "techreport",
+    "posted-content": "misc",
+}
+
+
+def _extract_year_from_crossref(item: dict) -> int | None:
+    """Extract publication year from CrossRef date fields (published → issued → created)."""
+    for field in ("published", "issued", "created"):
+        date_obj = item.get(field)
+        if isinstance(date_obj, dict):
+            parts = date_obj.get("date-parts")
+            if isinstance(parts, list) and parts:
+                first_part = parts[0]
+                if isinstance(first_part, list) and first_part and first_part[0]:
+                    try:
+                        return int(first_part[0])
+                    except (ValueError, TypeError):
+                        continue
+    return None
+
+
+
+def build_bibtex_from_crossref_json(item: dict) -> str | None:
+    """Build a BibTeX entry from a CrossRef API work item dict.
+
+    Returns None if the item has no title.
+    """
+    titles = item.get("title", [])
+    if not titles or not titles[0]:
+        return None
+
+    title = titles[0]
+    crossref_type = item.get("type", "")
+    entry_type = _CROSSREF_TYPE_MAP.get(crossref_type, "article")
+
+    # Authors — single pass for both BibTeX field and citation key
+    raw_authors = item.get("author", [])
+    author_list: list[str] = []
+    for a in raw_authors:
+        if "family" in a:
+            given = a.get("given", "")
+            author_list.append(f"{a['family']}, {given}" if given else a["family"])
+        elif "name" in a:
+            author_list.append(a["name"])
+    author_str = " and ".join(author_list) if author_list else None
+
+    # Year
+    year = _extract_year_from_crossref(item)
+
+    # Citation key
+    key = generate_citation_key(author_list, year, title)
+
+    # Build fields
+    fields: list[str] = []
+    fields.append(f"  title = {{{_escape_bibtex(title)}}}")
+
+    if author_str:
+        fields.append(f"  author = {{{_escape_bibtex(author_str)}}}")
+
+    if year is not None:
+        fields.append(f"  year = {{{year}}}")
+
+    doi = item.get("DOI")
+    if doi:
+        fields.append(f"  doi = {{{_escape_bibtex(doi, latex_aware=False)}}}")
+
+    # Venue field depends on entry type
+    container = item.get("container-title", [])
+    venue = container[0] if container else None
+    if venue:
+        if entry_type == "article":
+            fields.append(f"  journal = {{{_escape_bibtex(venue)}}}")
+        elif entry_type in ("inproceedings", "incollection"):
+            fields.append(f"  booktitle = {{{_escape_bibtex(venue)}}}")
+        elif entry_type == "book":
+            fields.append(f"  series = {{{_escape_bibtex(venue)}}}")
+        else:
+            fields.append(f"  journal = {{{_escape_bibtex(venue)}}}")
+
+    volume = item.get("volume")
+    if volume:
+        fields.append(f"  volume = {{{_escape_bibtex(str(volume), latex_aware=False)}}}")
+
+    issue = item.get("issue")
+    if issue:
+        fields.append(f"  number = {{{_escape_bibtex(str(issue), latex_aware=False)}}}")
+
+    page = item.get("page")
+    if page:
+        fields.append(f"  pages = {{{_escape_bibtex(page, latex_aware=False)}}}")
+    else:
+        article_number = item.get("article-number")
+        if article_number:
+            fields.append(f"  pages = {{{_escape_bibtex(article_number, latex_aware=False)}}}")
+
+    publisher = item.get("publisher")
+    if publisher:
+        fields.append(f"  publisher = {{{_escape_bibtex(publisher)}}}")
+
+    fields_str = ",\n".join(fields)
+    return f"@{entry_type}{{{key},\n{fields_str}\n}}"
+
+
 def build_fallback_bibtex(ref: ParsedReference) -> str:
     """Build a ``@misc`` BibTeX entry from a ParsedReference.
 

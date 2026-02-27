@@ -80,7 +80,43 @@ class BibTeXAssembler:
     ) -> list[ResolvedReference]:
         tasks = [self._resolve_one(ref) for ref in refs]
         resolved = await asyncio.gather(*tasks)
-        return self._deduplicate_citation_keys(resolved)
+        resolved_list = list(resolved)
+
+        # Second pass: retry unmatched references with lower concurrency
+        unmatched_indices = [
+            i
+            for i, r in enumerate(resolved_list)
+            if r.match_source == MatchSource.GROBID_FALLBACK
+        ]
+        if unmatched_indices:
+            logger.info(
+                "[BibTeXAssembler] Second pass: retrying %d unmatched references",
+                len(unmatched_indices),
+            )
+            retry_sem = asyncio.Semaphore(3)
+
+            async def _retry_one(idx: int) -> tuple[int, ResolvedReference]:
+                async with retry_sem:
+                    await asyncio.sleep(0.5)
+                    result = await self._waterfall(refs[idx])
+                    return (idx, result)
+
+            retry_tasks = [_retry_one(i) for i in unmatched_indices]
+            retry_results = await asyncio.gather(*retry_tasks)
+
+            improved = 0
+            for idx, result in retry_results:
+                if result.match_source != MatchSource.GROBID_FALLBACK:
+                    resolved_list[idx] = result
+                    improved += 1
+
+            logger.info(
+                "[BibTeXAssembler] Second pass improved %d/%d references",
+                improved,
+                len(unmatched_indices),
+            )
+
+        return self._deduplicate_citation_keys(resolved_list)
 
     @staticmethod
     def _deduplicate_citation_keys(
@@ -124,44 +160,106 @@ class BibTeXAssembler:
         async with self.semaphore:
             return await self._waterfall(ref)
 
+    def _build_resolved(
+        self,
+        ref: ParsedReference,
+        bibtex: str,
+        confidence: float,
+        source: MatchSource,
+        url: str | None,
+    ) -> ResolvedReference:
+        """Build a ResolvedReference from a successful lookup."""
+        status = (
+            MatchStatus.MATCHED
+            if confidence >= settings.exact_match_threshold
+            else MatchStatus.FUZZY
+        )
+        citation_key = _extract_citation_key(bibtex) or generate_citation_key(
+            ref.authors, ref.year, ref.title
+        )
+        return ResolvedReference(
+            **ref.model_dump(),
+            bibtex=bibtex,
+            citation_key=citation_key,
+            match_status=status,
+            match_source=source,
+            url=url,
+        )
+
     async def _waterfall(self, ref: ParsedReference) -> ResolvedReference:
         """Try each source in order until a BibTeX match is found."""
-        sources: list[tuple[MatchSource, object]] = [
-            (MatchSource.CROSSREF, self.crossref),
-            (MatchSource.SEMANTIC_SCHOLAR, self.semantic_scholar),
-            (MatchSource.DBLP, self.dblp),
-        ]
 
-        for source_type, service in sources:
-            try:
-                result = await service.lookup(ref)
-                if result:
-                    bibtex, confidence, url = result
-                    status = (
-                        MatchStatus.MATCHED
-                        if confidence >= settings.exact_match_threshold
-                        else MatchStatus.FUZZY
-                    )
-                    citation_key = _extract_citation_key(bibtex) or generate_citation_key(
-                        ref.authors, ref.year, ref.title
-                    )
-                    logger.info(
-                        "[BibTeXAssembler] ref #%d resolved via %s (confidence=%.2f)",
-                        ref.index, source_type.value, confidence,
-                    )
-                    return ResolvedReference(
-                        **ref.model_dump(),
-                        bibtex=bibtex,
-                        citation_key=citation_key,
-                        match_status=status,
-                        match_source=source_type,
-                        url=url,
-                    )
-            except (httpx.HTTPError, httpx.TimeoutException, ValueError, KeyError):
-                logger.exception(
-                    "[BibTeXAssembler] Error from %s for ref #%d",
-                    source_type.value, ref.index,
+        # Step 1: CrossRef
+        try:
+            result = await self.crossref.lookup(ref)
+            if result:
+                bibtex, confidence, url = result
+                logger.info(
+                    "[BibTeXAssembler] ref #%d resolved via %s (confidence=%.2f)",
+                    ref.index, MatchSource.CROSSREF.value, confidence,
                 )
+                return self._build_resolved(
+                    ref, bibtex, confidence, MatchSource.CROSSREF, url
+                )
+        except (httpx.HTTPError, httpx.TimeoutException, ValueError, KeyError):
+            logger.exception(
+                "[BibTeXAssembler] Error from %s for ref #%d",
+                MatchSource.CROSSREF.value, ref.index,
+            )
+
+        # Step 2: Semantic Scholar (with DOI handoff)
+        try:
+            s2_result, s2_doi = await self.semantic_scholar.lookup_with_doi(ref)
+            if s2_result:
+                bibtex, confidence, url = s2_result
+                logger.info(
+                    "[BibTeXAssembler] ref #%d resolved via %s (confidence=%.2f)",
+                    ref.index, MatchSource.SEMANTIC_SCHOLAR.value, confidence,
+                )
+                return self._build_resolved(
+                    ref, bibtex, confidence, MatchSource.SEMANTIC_SCHOLAR, url
+                )
+
+            # S2 found DOI but no BibTeX — hand off to CrossRef if it's a new DOI
+            if s2_doi and s2_doi != ref.doi:
+                logger.info(
+                    "[BibTeXAssembler] S2 found DOI=%s for ref #%d, handing off to CrossRef",
+                    s2_doi, ref.index,
+                )
+                ref_with_doi = ref.model_copy(update={"doi": s2_doi})
+                crossref_result = await self.crossref.lookup(ref_with_doi)
+                if crossref_result:
+                    bibtex, confidence, url = crossref_result
+                    logger.info(
+                        "[BibTeXAssembler] ref #%d resolved via S2→CrossRef handoff (confidence=%.2f)",
+                        ref.index, confidence,
+                    )
+                    return self._build_resolved(
+                        ref, bibtex, confidence, MatchSource.CROSSREF, url
+                    )
+        except (httpx.HTTPError, httpx.TimeoutException, ValueError, KeyError):
+            logger.exception(
+                "[BibTeXAssembler] Error from %s for ref #%d",
+                MatchSource.SEMANTIC_SCHOLAR.value, ref.index,
+            )
+
+        # Step 3: DBLP
+        try:
+            result = await self.dblp.lookup(ref)
+            if result:
+                bibtex, confidence, url = result
+                logger.info(
+                    "[BibTeXAssembler] ref #%d resolved via %s (confidence=%.2f)",
+                    ref.index, MatchSource.DBLP.value, confidence,
+                )
+                return self._build_resolved(
+                    ref, bibtex, confidence, MatchSource.DBLP, url
+                )
+        except (httpx.HTTPError, httpx.TimeoutException, ValueError, KeyError):
+            logger.exception(
+                "[BibTeXAssembler] Error from %s for ref #%d",
+                MatchSource.DBLP.value, ref.index,
+            )
 
         # Fallback: construct BibTeX from GROBID-parsed data
         logger.info(

@@ -40,6 +40,39 @@ class SemanticScholarService:
         Returns:
             ``(bibtex_string, confidence, url)`` or ``None`` if no match with BibTeX.
         """
+        result = await self._search_papers(ref)
+        if result is None:
+            return None
+        bibtex, score, url, _doi = result
+        if bibtex:
+            return (bibtex, score, url)
+        return None
+
+    async def lookup_with_doi(
+        self, ref: ParsedReference
+    ) -> tuple[tuple[str, float, str | None] | None, str | None]:
+        """Search Semantic Scholar by title, returning both BibTeX and DOI info.
+
+        Returns:
+            A 2-tuple of:
+            - ``(bibtex, confidence, url)`` or ``None`` if no BibTeX found
+            - DOI string or ``None`` if no DOI found
+        """
+        result = await self._search_papers(ref)
+        if result is None:
+            return (None, None)
+        bibtex, score, url, doi = result
+        bibtex_result = (bibtex, score, url) if bibtex else None
+        return (bibtex_result, doi)
+
+    async def _search_papers(
+        self, ref: ParsedReference
+    ) -> tuple[str | None, float, str | None, str | None] | None:
+        """Search S2 and return best match info.
+
+        Returns:
+            ``(bibtex_or_none, score, url, doi_or_none)`` or ``None`` on no results/error.
+        """
         if not ref.title:
             logger.debug(
                 "[SemanticScholarService] Skipping ref index=%d, no title",
@@ -95,10 +128,13 @@ class SemanticScholarService:
             )
             return None
 
-        # Find best title match that has citationStyles.bibtex
+        # Track best match with BibTeX and best overall match for DOI
         best_bibtex: str | None = None
+        best_bibtex_score: float = 0.0
+        best_bibtex_url: str | None = None
+
         best_score: float = 0.0
-        best_url: str | None = None
+        best_doi: str | None = None
 
         for paper in papers:
             paper_title = paper.get("title")
@@ -107,30 +143,34 @@ class SemanticScholarService:
 
             score = title_similarity(ref.title, paper_title)
 
-            if score <= best_score:
-                continue
+            # Extract DOI from externalIds
+            paper_doi: str | None = None
+            external_ids = paper.get("externalIds")
+            if isinstance(external_ids, dict):
+                doi_val = external_ids.get("DOI") or external_ids.get("doi")
+                if isinstance(doi_val, str) and doi_val.strip():
+                    paper_doi = doi_val.strip()
 
-            # Check if citationStyles.bibtex is available
-            citation_styles = paper.get("citationStyles")
-            if not citation_styles:
-                continue
-            bibtex = citation_styles.get("bibtex")
-            if not bibtex:
-                continue
+            # Track best overall match for DOI
+            if score > best_score:
+                best_score = score
+                best_doi = paper_doi
 
-            paper_url = paper.get("url")
-            if not paper_url:
-                external_ids = paper.get("externalIds")
-                if isinstance(external_ids, dict):
-                    doi = external_ids.get("DOI") or external_ids.get("doi")
-                    if isinstance(doi, str) and doi.strip():
-                        paper_url = f"https://doi.org/{doi.strip()}"
+            # Track best match with BibTeX
+            if score > best_bibtex_score:
+                citation_styles = paper.get("citationStyles")
+                if citation_styles:
+                    bibtex = citation_styles.get("bibtex")
+                    if bibtex:
+                        paper_url = paper.get("url")
+                        if not paper_url and paper_doi:
+                            paper_url = f"https://doi.org/{paper_doi}"
+                        best_bibtex_score = score
+                        best_bibtex = bibtex.strip()
+                        best_bibtex_url = paper_url
 
-            best_score = score
-            best_bibtex = bibtex.strip()
-            best_url = paper_url
-
-        if best_score < settings.fuzzy_match_threshold or not best_bibtex:
+        # Apply threshold
+        if best_score < settings.fuzzy_match_threshold:
             logger.debug(
                 "[SemanticScholarService] Best match score=%.3f below threshold=%.2f for title='%s'",
                 best_score,
@@ -139,9 +179,20 @@ class SemanticScholarService:
             )
             return None
 
-        logger.info(
-            "[SemanticScholarService] Matched with confidence=%.3f for title='%s'",
-            best_score,
-            ref.title[:80],
-        )
-        return (best_bibtex, best_score, best_url)
+        # Return bibtex result (may be None) and DOI
+        if best_bibtex and best_bibtex_score >= settings.fuzzy_match_threshold:
+            logger.info(
+                "[SemanticScholarService] Matched with confidence=%.3f for title='%s'",
+                best_bibtex_score,
+                ref.title[:80],
+            )
+            return (best_bibtex, best_bibtex_score, best_bibtex_url, best_doi)
+
+        # No BibTeX but found a match with DOI
+        if best_doi:
+            logger.info(
+                "[SemanticScholarService] Found DOI=%s without BibTeX for title='%s'",
+                best_doi,
+                ref.title[:80],
+            )
+        return (None, best_score, None, best_doi)

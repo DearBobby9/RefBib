@@ -8,6 +8,7 @@ import httpx
 from app.config import settings
 from app.models.reference import ParsedReference
 from app.utils.rate_limiter import TokenBucketRateLimiter
+from app.utils.bibtex_formatter import build_bibtex_from_crossref_json
 from app.utils.text_similarity import title_similarity
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,16 @@ class CrossRefService:
                     ref.doi,
                 )
                 return (bibtex, 1.0, f"https://doi.org/{ref.doi}")
+            # /transform failed — try JSON metadata construction
+            item = await self._fetch_work_metadata(ref.doi)
+            if item:
+                bibtex = build_bibtex_from_crossref_json(item)
+                if bibtex:
+                    logger.info(
+                        "[CrossRefService] Constructed BibTeX from JSON for doi=%s",
+                        ref.doi,
+                    )
+                    return (bibtex, 0.95, f"https://doi.org/{ref.doi}")
             logger.warning(
                 "[CrossRefService] DOI lookup failed for doi=%s, falling back to title search",
                 ref.doi,
@@ -157,6 +168,7 @@ class CrossRefService:
         best_score: float = 0.0
         best_doi: str | None = None
         best_url: str | None = None
+        best_item: dict | None = None
 
         for item in items:
             item_titles = item.get("title", [])
@@ -169,6 +181,7 @@ class CrossRefService:
                 best_score = score
                 best_doi = item.get("DOI")
                 best_url = item.get("URL")
+                best_item = item
 
         # Check if best match meets the threshold
         if best_score < settings.fuzzy_match_threshold or not best_doi:
@@ -180,9 +193,48 @@ class CrossRefService:
             return None
 
         # Fetch BibTeX for the best matching DOI
+        resolved_url = best_url or f"https://doi.org/{best_doi}"
         bibtex = await self._lookup_by_doi(best_doi)
         if bibtex:
-            resolved_url = best_url or f"https://doi.org/{best_doi}"
             return (bibtex, best_score, resolved_url)
 
+        # /transform failed — fall back to JSON construction from search result
+        if best_item:
+            bibtex = build_bibtex_from_crossref_json(best_item)
+            if bibtex:
+                logger.info(
+                    "[CrossRefService] Constructed BibTeX from JSON for title search doi=%s",
+                    best_doi,
+                )
+                return (bibtex, min(best_score, 0.85), resolved_url)
+
         return None
+
+    async def _fetch_work_metadata(self, doi: str) -> dict | None:
+        """Fetch CrossRef work metadata JSON for a DOI."""
+        url = f"https://api.crossref.org/works/{quote(doi, safe='')}"
+        try:
+            await self.rate_limiter.acquire()
+            response = await self.client.get(url, timeout=_DOI_TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("message")
+        except httpx.TimeoutException:
+            logger.warning(
+                "[CrossRefService] Timeout fetching metadata for doi=%s", doi
+            )
+            return None
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "[CrossRefService] HTTP error fetching metadata for doi=%s: %s",
+                doi,
+                exc,
+            )
+            return None
+        except Exception as exc:
+            logger.error(
+                "[CrossRefService] Unexpected error fetching metadata for doi=%s: %s",
+                doi,
+                exc,
+            )
+            return None

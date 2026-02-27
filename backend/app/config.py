@@ -2,6 +2,12 @@ from pydantic_settings import BaseSettings
 
 GROBID_INSTANCES = [
     {
+        "id": "self-hosted",
+        "name": "Self-hosted (Tailscale)",
+        "url": "http://localhost:8070",
+        "description": "Self-hosted GROBID on Mac Studio via Tailscale. Most reliable.",
+    },
+    {
         "id": "hf-dl",
         "name": "HuggingFace (Deep Learning)",
         "url": "https://kermitt2-grobid.hf.space",
@@ -33,9 +39,9 @@ GROBID_INSTANCES = [
     },
     {
         "id": "local",
-        "name": "Local Docker",
+        "name": "Local Docker (dev)",
         "url": "http://localhost:8070",
-        "description": "Self-hosted via Docker. Most reliable.",
+        "description": "Local Docker for development. Same as self-hosted in production.",
     },
 ]
 
@@ -43,15 +49,15 @@ GROBID_INSTANCES = [
 class Settings(BaseSettings):
     grobid_url: str = GROBID_INSTANCES[0]["url"]
     grobid_verify_ssl: bool = True
-    crossref_mailto: str = ""
+    crossref_mailto: str = "refbib-app@proton.me"
     frontend_url: str = "http://localhost:3000"
     app_env: str = "development"
     site_password: str = ""
 
     # Rate limits (requests per second)
-    crossref_rps: float = 20.0
-    semantic_scholar_rps: float = 8.0
-    dblp_rps: float = 5.0
+    crossref_rps: float = 10.0
+    semantic_scholar_rps: float = 1.0
+    dblp_rps: float = 3.0
 
     # Concurrency
     max_concurrent_lookups: int = 10
