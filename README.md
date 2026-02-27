@@ -12,6 +12,37 @@ A public hosted instance is available at **[ref-bib.vercel.app](https://ref-bib.
 
 > **Note:** The public instance runs on shared free-tier infrastructure with limited capacity. For regular use, please [self-host your own instance](#quick-start) — it only takes a few minutes.
 
+## Current Status (February 2026)
+
+RefBib is currently at **Phase 1.5 (MVP+)**.
+
+### Implemented
+
+- Single PDF upload (drag-and-drop or file picker)
+- Reference extraction via GROBID with automatic multi-instance fallback
+- BibTeX resolution waterfall: CrossRef -> Semantic Scholar -> DBLP -> GROBID fallback `@misc`
+- Match status labeling (`Matched` / `Fuzzy` / `Unmatched`)
+- Unmatched availability check (`Check availability`) across CrossRef / Semantic Scholar / DBLP
+- Search + status filter + select all / deselect all
+- Export selected entries by copy-to-clipboard or `.bib` download
+- Local Workspace view with dedup stats, conflict queue, and workspace-level export
+- Top-level `Extract | Workspace` navigation
+- Password gate for hosted instances (`SITE_PASSWORD`)
+- Light/dark theme toggle
+
+### Not Yet Implemented
+
+- Multi-PDF batch upload in one request
+- Multi-workspace management (create/rename/switch/delete)
+- Topic clustering and citation-frequency analysis
+- Overleaf integration
+- Browser extension and citation graph visualization
+
+### Validation Snapshot
+
+- Backend test suite: **62 tests passing** (`cd backend && .venv/bin/pytest -q backend/tests`)
+- Frontend test suite: **11 tests passing** (`cd frontend && npx vitest run`)
+
 ## Use Case
 
 Writing a paper and reading through related work? When you find a relevant published paper, drop it into RefBib to instantly grab all its references as BibTeX — no more manually searching and copying entries one by one.
@@ -90,12 +121,15 @@ npm run dev
 
 ## How It Works
 
-```
-PDF  →  GROBID (parse references)  →  BibTeX Lookup  →  Export .bib
-                                        ├─ CrossRef (DOI → BibTeX)
-                                        ├─ Semantic Scholar (title search)
-                                        ├─ DBLP (title search)
-                                        └─ GROBID fallback (@misc)
+```text
+PDF -> GROBID (parse references) -> BibTeX Lookup -> Extract view export
+                                      |- CrossRef (DOI -> BibTeX)
+                                      |- Semantic Scholar (title search)
+                                      |- DBLP (title search)
+                                      `- GROBID fallback (@misc)
+
+Extract view -> Add selected to Workspace -> local dedup store -> Workspace export
+Unmatched item -> Check availability -> CrossRef / S2 / DBLP discovery status
 ```
 
 1. Upload a PDF with a reference section
@@ -103,6 +137,24 @@ PDF  →  GROBID (parse references)  →  BibTeX Lookup  →  Export .bib
 3. Each reference is looked up via a waterfall strategy: CrossRef → Semantic Scholar → DBLP
 4. If no match is found, a fallback `@misc` entry is constructed from GROBID's parse
 5. Select the entries you want and download a `.bib` file or copy to clipboard
+
+### Workspace
+
+- Add selected references from the extract page to a local Workspace (stored in browser localStorage)
+- Open the `Workspace` tab to review deduplicated entries, source-paper groups, and conflict queue
+- Export either:
+  - `Export Unique .bib` (deduplicated)
+  - `Export All (with duplicates)` (occurrence-preserving)
+- Clear Workspace at any time from the Workspace actions panel
+
+### Unmatched Discovery
+
+- `Unmatched` still means no BibTeX match in the main waterfall; RefBib builds a fallback `@misc`
+- You can now click `Check availability` on unmatched entries to probe indexed sources:
+  - CrossRef
+  - Semantic Scholar
+  - DBLP
+- This returns a separate discoverability signal (`available` / `unavailable` / `error` / `skipped`) and does not overwrite `match_status`
 
 ### Match Status
 
@@ -133,13 +185,16 @@ RefBib needs a GROBID server for PDF parsing. You have two options:
 
 ### Option A: Public Instances (No Setup Required)
 
-RefBib comes preconfigured with free community instances. You can switch between them in the settings:
+RefBib comes preconfigured with free/community instances plus a local Docker option. You can switch between them in the settings:
 
 | Instance | URL | Notes |
 |----------|-----|-------|
 | HuggingFace DL (default) | `https://kermitt2-grobid.hf.space` | Best accuracy, DL+CRF models |
 | HuggingFace CRF | `https://kermitt2-grobid-crf.hf.space` | Faster, slightly lower accuracy |
 | Science-Miner (Legacy) | `https://cloud.science-miner.com/grobid` | Often unstable |
+| HuggingFace (lfoppiano) | `https://lfoppiano-grobid.hf.space` | Community instance, availability may vary |
+| HuggingFace (qingxu98) | `https://qingxu98-grobid.hf.space` | Community instance, availability may vary |
+| Local Docker | `http://localhost:8070` | Self-hosted option, usually the most reliable |
 
 > **These are free community resources** hosted by the [GROBID team](https://github.com/kermitt2/grobid) on [Hugging Face Spaces](https://huggingface.co/spaces/kermitt2/grobid). They have rate limits and may be temporarily unavailable. Please be respectful of their capacity. For reliable usage, deploy GROBID locally (see below).
 

@@ -155,7 +155,12 @@ export function SettingsDialog({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          aria-label="Open settings"
+        >
           <Settings className="h-4 w-4" />
         </Button>
       </DialogTrigger>

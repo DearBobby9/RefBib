@@ -1,4 +1,10 @@
-import { ExtractError, ExtractResponse, GrobidInstancesResponse } from "./types";
+import {
+  DiscoveryCheckResponse,
+  ExtractError,
+  ExtractResponse,
+  GrobidInstancesResponse,
+  Reference,
+} from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -16,6 +22,41 @@ export async function extractReferences(
     method: "POST",
     body: formData,
     signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    const error: ExtractError = await response.json().catch(() => ({
+      detail: `Server error (${response.status})`,
+    }));
+    throw new Error(error.detail);
+  }
+
+  return response.json();
+}
+
+export async function checkDiscovery(
+  references: Reference[],
+  maxItems = 20,
+  signal?: AbortSignal
+): Promise<DiscoveryCheckResponse> {
+  const payload = {
+    max_items: maxItems,
+    references: references.map((reference) => ({
+      index: reference.index,
+      raw_citation: reference.raw_citation,
+      title: reference.title,
+      authors: reference.authors,
+      year: reference.year,
+      doi: reference.doi,
+      venue: reference.venue,
+    })),
+  };
+
+  const response = await fetch(`${API_BASE}/api/discovery/check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal,
   });
 
   if (!response.ok) {

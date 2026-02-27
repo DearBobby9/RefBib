@@ -8,9 +8,14 @@ import httpx
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 
 from app.config import GROBID_INSTANCES, settings
-from app.models.api import ExtractResponse
+from app.models.api import (
+    DiscoveryCheckRequest,
+    DiscoveryCheckResponse,
+    ExtractResponse,
+)
 from app.models.reference import MatchStatus
 from app.services.bibtex_assembler import BibTeXAssembler
+from app.services.discovery_service import DiscoveryService
 from app.services.grobid_service import parse_pdf_references
 from app.services.grobid_xml_parser import parse_tei_xml
 
@@ -22,6 +27,7 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 READ_CHUNK_SIZE = 1024 * 1024  # 1 MB
 _ALLOWED_CONTENT_TYPES = {"application/pdf", "application/x-pdf"}
 _GROBID_INSTANCE_BY_ID = {instance["id"]: instance for instance in GROBID_INSTANCES}
+MAX_DISCOVERY_ITEMS = 20
 
 
 async def _read_upload_limited(file: UploadFile, max_file_size: int) -> bytes:
@@ -174,3 +180,30 @@ async def extract_references(
         unmatched_count=unmatched,
         processing_time_seconds=round(elapsed, 2),
     )
+
+
+@router.post("/discovery/check", response_model=DiscoveryCheckResponse)
+async def check_discovery(request: Request, payload: DiscoveryCheckRequest):
+    if payload.max_items > MAX_DISCOVERY_ITEMS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"max_items cannot exceed {MAX_DISCOVERY_ITEMS}.",
+        )
+
+    if len(payload.references) > payload.max_items:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Too many references in one request: "
+                f"{len(payload.references)} > {payload.max_items}."
+            ),
+        )
+
+    discovery = DiscoveryService(
+        request.app.state.http_client,
+        request.app.state.crossref_rate_limiter,
+        request.app.state.semantic_scholar_rate_limiter,
+        request.app.state.dblp_rate_limiter,
+    )
+    results = await discovery.check_all(payload.references)
+    return DiscoveryCheckResponse(results=results)

@@ -5,19 +5,40 @@ import { Info, ChevronDown } from "lucide-react";
 import { ReferenceItem } from "./reference-item";
 import { FilterBar, Filters } from "./filter-bar";
 import { ExportToolbar } from "./export-toolbar";
+import { WorkspaceDock } from "./workspace-dock";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ExtractResponse, MatchStatus } from "@/lib/types";
+import {
+  DiscoveryResult,
+  ExtractResponse,
+  MatchStatus,
+  Reference,
+  WorkspaceAddResult,
+  WorkspaceStats,
+} from "@/lib/types";
 
 interface ReferenceListProps {
   data: ExtractResponse;
   onReset: () => void;
+  workspaceStats: WorkspaceStats;
+  onAddToWorkspace: (
+    selectedRefs: Reference[]
+  ) => WorkspaceAddResult | Promise<WorkspaceAddResult>;
+  getCachedDiscovery?: (reference: Reference) => DiscoveryResult | null;
+  onCheckAvailability?: (reference: Reference) => Promise<DiscoveryResult>;
 }
 
-export function ReferenceList({ data, onReset }: ReferenceListProps) {
+export function ReferenceList({
+  data,
+  onReset,
+  workspaceStats,
+  onAddToWorkspace,
+  getCachedDiscovery,
+  onCheckAvailability,
+}: ReferenceListProps) {
   const [selected, setSelected] = useState<Set<number>>(
     () => new Set(data.references.map((r) => r.index))
   );
@@ -113,6 +134,9 @@ export function ReferenceList({ data, onReset }: ReferenceListProps) {
           Upload another PDF
         </button>
       </div>
+      <div className="rounded-md border border-blue-200 bg-blue-50/70 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200">
+        Workspace active: dedup will be applied on workspace export
+      </div>
 
       {/* Status legend */}
       <Collapsible>
@@ -169,6 +193,8 @@ export function ReferenceList({ data, onReset }: ReferenceListProps) {
             reference={ref}
             selected={selected.has(ref.index)}
             onToggle={toggleRef}
+            getCachedDiscovery={getCachedDiscovery}
+            onCheckAvailability={onCheckAvailability}
           />
         ))}
         {filteredRefs.length === 0 && (
@@ -179,7 +205,11 @@ export function ReferenceList({ data, onReset }: ReferenceListProps) {
       </div>
 
       {/* Sticky export toolbar */}
-      <ExportToolbar selectedRefs={selectedRefs} />
+      <ExportToolbar
+        selectedRefs={selectedRefs}
+        onAddToWorkspace={onAddToWorkspace}
+      />
+      {workspaceStats.refs > 0 && <WorkspaceDock stats={workspaceStats} />}
     </div>
   );
 }

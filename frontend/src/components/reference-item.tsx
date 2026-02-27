@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronDown, ChevronRight, Loader2, Search } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { BibtexPreview } from "./bibtex-preview";
-import { Reference, MatchStatus } from "@/lib/types";
+import {
+  DiscoveryResult,
+  DiscoverySource,
+  MatchStatus,
+  Reference,
+} from "@/lib/types";
 
 const STATUS_STYLES: Record<MatchStatus, { label: string; variant: "default" | "secondary" | "destructive" }> = {
   matched: { label: "Matched", variant: "default" },
@@ -20,25 +25,69 @@ const SOURCE_LABELS: Record<string, string> = {
   grobid_fallback: "GROBID",
 };
 const SCHOLAR_SEARCH_BASE = "https://scholar.google.com/scholar?q=";
+const DISCOVERY_SOURCE_LABELS: Record<DiscoverySource, string> = {
+  crossref: "CrossRef",
+  semantic_scholar: "S2",
+  dblp: "DBLP",
+};
 
 interface ReferenceItemProps {
   reference: Reference;
   selected: boolean;
   onToggle: (index: number) => void;
+  getCachedDiscovery?: (reference: Reference) => DiscoveryResult | null;
+  onCheckAvailability?: (reference: Reference) => Promise<DiscoveryResult>;
 }
 
 export function ReferenceItem({
   reference,
   selected,
   onToggle,
+  getCachedDiscovery,
+  onCheckAvailability,
 }: ReferenceItemProps) {
   const [expanded, setExpanded] = useState(false);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const [discoveryResult, setDiscoveryResult] = useState<DiscoveryResult | null>(
+    () => (getCachedDiscovery ? getCachedDiscovery(reference) : null)
+  );
   const { label, variant } = STATUS_STYLES[reference.match_status];
   const titleText = reference.title || reference.raw_citation || "Untitled reference";
   const scholarSearchUrl = reference.title
     ? `${SCHOLAR_SEARCH_BASE}${encodeURIComponent(reference.title)}`
     : null;
   const titleLink = reference.url || scholarSearchUrl;
+  const availableOnText = discoveryResult?.available_on
+    .map((source) => DISCOVERY_SOURCE_LABELS[source] || source)
+    .join(" / ");
+
+  useEffect(() => {
+    setDiscoveryResult(getCachedDiscovery ? getCachedDiscovery(reference) : null);
+  }, [getCachedDiscovery, reference]);
+
+  const handleCheckAvailability = async () => {
+    if (!onCheckAvailability || checkingAvailability) return;
+    setCheckingAvailability(true);
+    try {
+      const result = await onCheckAvailability(reference);
+      setDiscoveryResult(result);
+    } catch (error) {
+      const reason =
+        error instanceof Error
+          ? error.message
+          : "Discovery failed. Please retry.";
+      setDiscoveryResult({
+        index: reference.index,
+        discovery_status: "error",
+        available_on: [],
+        best_confidence: null,
+        best_url: null,
+        reason,
+      });
+    } finally {
+      setCheckingAvailability(false);
+    }
+  };
 
   return (
     <div className="border rounded-lg p-3 transition-colors hover:bg-muted/30">
@@ -111,6 +160,24 @@ export function ReferenceItem({
                 Search on Scholar
               </a>
             )}
+            {reference.match_status === "unmatched" && onCheckAvailability && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleCheckAvailability();
+                }}
+                disabled={checkingAvailability}
+                className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline disabled:opacity-50"
+              >
+                {checkingAvailability ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Search className="h-3 w-3" />
+                )}
+                {checkingAvailability ? "Checking..." : "Check availability"}
+              </button>
+            )}
             {reference.doi && (
               <a
                 href={`https://doi.org/${encodeURIComponent(reference.doi)}`}
@@ -123,6 +190,45 @@ export function ReferenceItem({
               </a>
             )}
           </div>
+          {reference.match_status === "unmatched" && discoveryResult && (
+            <div className="mt-1 text-[11px]">
+              {discoveryResult.discovery_status === "available" && (
+                <span className="text-green-700 dark:text-green-400">
+                  Available on: {availableOnText || "indexed sources"}
+                  {discoveryResult.best_url ? (
+                    <>
+                      {" "}
+                      ·{" "}
+                      <a
+                        href={discoveryResult.best_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline underline-offset-2"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        open best match
+                      </a>
+                    </>
+                  ) : null}
+                </span>
+              )}
+              {discoveryResult.discovery_status === "unavailable" && (
+                <span className="text-muted-foreground">
+                  Unavailable on indexed sources.
+                </span>
+              )}
+              {discoveryResult.discovery_status === "error" && (
+                <span className="text-amber-600 dark:text-amber-400">
+                  {discoveryResult.reason || "Discovery failed. Please retry."}
+                </span>
+              )}
+              {discoveryResult.discovery_status === "skipped" && (
+                <span className="text-muted-foreground">
+                  {discoveryResult.reason || "Skipped."}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {reference.bibtex && (

@@ -24,7 +24,7 @@ Frontend (Next.js + shadcn/ui + TailwindCSS)     Backend (Python FastAPI)
                                                  │     Title→DBLP (CS papers)  │
                                                  │     Fallback: GROBID raw    │
                                                  │  3. Post-processing:        │
-                                                 │     dedup, citation keys    │
+                                                 │     citation-key dedup       │
                                                  └─────────────────────────────┘
 ```
 
@@ -52,7 +52,8 @@ npm install
 npm run dev
 
 # Tests
-cd backend && .venv/bin/pytest       # backend tests (42 tests)
+cd backend && .venv/bin/pytest       # backend tests (62 tests)
+cd frontend && npx vitest run        # frontend tests (11 tests)
 cd frontend && npm run build         # frontend type-check + build
 
 # GROBID (local Docker, optional)
@@ -63,11 +64,13 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 
 ### Backend (`backend/`)
 - `app/main.py` — FastAPI app entry, CORS, lifespan (httpx clients + rate limiters)
-- `app/config.py` — Settings + GROBID_INSTANCES list (4 instances)
+- `app/config.py` — Settings + GROBID_INSTANCES list (6 instances)
 - `app/routers/auth.py` — `/api/verify-password`, `/api/auth/status` (hmac.compare_digest)
 - `app/routers/health.py` — `/api/health`, `/api/grobid-instances`, `/api/grobid-instances/{id}/health`
-- `app/routers/references.py` — `POST /api/extract` (PDF upload + validation + GROBID fallback chain)
+- `app/routers/references.py` — `POST /api/extract` (PDF upload + validation + GROBID fallback chain), `POST /api/discovery/check`
+- `app/models/api.py` — Pydantic models (DiscoveryReferenceInput with DOI regex + field length validators)
 - `app/services/bibtex_assembler.py` — Waterfall orchestrator (CrossRef → S2 → DBLP → fallback)
+- `app/services/discovery_service.py` — Unmatched discovery: probe CrossRef/S2/DBLP for availability (decoupled from match_status)
 - `app/services/grobid_service.py` — GROBID API client with fallback chain
 - `app/services/grobid_xml_parser.py` — TEI XML → ParsedReference
 - `app/services/crossref_service.py` — CrossRef DOI/title lookup
@@ -79,23 +82,54 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 
 ### Frontend (`frontend/`)
 - `src/app/page.tsx` — Main page (upload → progress → results)
+- `src/app/workspace/page.tsx` — Workspace page (dedup stats, source papers, conflict queue, export)
 - `src/components/pdf-upload-zone.tsx` — Drag-and-drop PDF upload
 - `src/components/reference-list.tsx` — Results display with select/filter
-- `src/components/reference-item.tsx` — Individual reference card
+- `src/components/reference-item.tsx` — Individual reference card (clickable title links, Scholar search, fuzzy warnings)
+- `src/components/app-header.tsx` — Top navigation with Extract | Workspace tabs (NavTabs subcomponent)
+- `src/components/site-footer.tsx` — Site footer
+- `src/components/workspace-dock.tsx` — Sticky workspace indicator on extract page
+- `src/components/theme-provider.tsx` — next-themes ThemeProvider wrapper
+- `src/components/theme-toggle.tsx` — Sun/Moon dark mode toggle button
 - `src/components/password-gate.tsx` — Auth gate with server health check + retry for cold starts
 - `src/components/settings-dialog.tsx` — GROBID instance selection + health check
-- `src/components/export-toolbar.tsx` — Export .bib / copy to clipboard
+- `src/components/export-toolbar.tsx` — Export .bib / copy to clipboard + Add to Workspace
 - `src/components/filter-bar.tsx` — Filter by match status
 - `src/components/bibtex-preview.tsx` — BibTeX syntax-highlighted preview
 - `src/hooks/use-extract-references.ts` — Upload + extraction state machine
 - `src/hooks/use-export-bibtex.ts` — Export logic
-- `src/lib/api-client.ts` — Backend API functions
-- `src/lib/types.ts` — TypeScript types (Reference, ExtractResponse, etc.)
+- `src/hooks/use-workspace.ts` — Workspace state (localStorage, V2 schema, O(1) dedup with bigram similarity)
+- `src/lib/api-client.ts` — Backend API functions (extract, discovery, health, auth)
+- `src/lib/types.ts` — TypeScript types (Reference, ExtractResponse, WorkspaceEntry, etc.)
+- `src/lib/constants.ts` — Shared constants (GROBID instance defaults, storage keys)
+
+## Current Delivery Snapshot
+
+Implemented now:
+
+- Single PDF upload end-to-end extraction flow
+- GROBID instance picker + health checks + automatic fallback chain
+- Match status UX (`matched` / `fuzzy` / `unmatched`) with search + status filter
+- BibTeX export (copy + download)
+- Password gate and backend cold-start handling
+- Dark mode toggle
+- Local Workspace with dedup (DOI, fingerprint, bigram similarity), conflict queue, workspace-level export
+- Unmatched Discovery (`/api/discovery/check`) — probe CrossRef/S2/DBLP availability
+- App-level navigation (Extract | Workspace tabs)
+- Frontend vitest test suite (11 tests: workspace dedup + component tests)
+
+Not implemented yet:
+
+- Multi-PDF batch upload in one request
+- Multi-workspace management (create/rename/switch/delete)
+- Year/source filters in UI
+- Semantic topic clustering and citation frequency analytics
+- Overleaf integration / browser extension / citation graph view
 
 ## Key Technical Decisions
 
 - GROBID is the academic standard for PDF structure extraction (F1 ~0.87-0.90). Runs as external service, not embedded.
-- 4 GROBID instances configured with automatic fallback chain. Selected instance tried first, then others in order.
+- 6 GROBID instances configured with automatic fallback chain. Selected instance tried first, then others in order.
 - BibTeX matching uses waterfall strategy: DOI→CrossRef, title→Semantic Scholar, title→DBLP, then GROBID fallback `@misc`.
 - All three external APIs are free but rate-limited. Token bucket rate limiters enforce per-service RPS.
 - Concurrent resolution with semaphore (`max_concurrent_lookups=10`).
@@ -104,11 +138,17 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 - Password gate: `SITE_PASSWORD` env var on backend, frontend-only gate (no JWT/session). `hmac.compare_digest` for timing-safe comparison.
 - Server health check on page load: auto-ping `/api/health` with 8s timeout, retry up to 5 times (3s interval) for Fly.io cold starts. Fail-closed: auth errors default to showing password wall.
 - The tool deliberately does NOT use LLMs — all BibTeX comes from verified academic databases. No hallucinations.
+- Each service returns `(bibtex, confidence, url)` tuples; URL is passed through to frontend for clickable reference titles.
+- Dark mode via next-themes ThemeProvider, toggle button in header. CSS variables for light/dark already defined in globals.css.
+- Workspace dedup uses O(1) lookup maps (doiMap, fingerprintMap) with bigram similarity fallback (thresholds: ≥0.95 auto-merge, 0.88–0.95 conflict, <0.88 unique).
+- Discovery endpoint uses `DiscoveryReferenceInput` model (decoupled from internal `ParsedReference`) with DOI regex validation and field length caps.
+- Shared constants in `src/lib/constants.ts` to avoid duplication across components.
 
 ## Development Phases
 
 - **Phase 1 (MVP)** ✅: Single PDF → full reference BibTeX list → copy/download. Filter by match status. GROBID instance selection + fallback.
-- **Phase 2**: Multi-PDF upload, merge & dedup across PDFs
+- **Phase 1.5 (MVP+)** ✅: Workspace with dedup + discovery + navigation.
+- **Phase 2**: Multi-PDF batch upload, multi-workspace management
 - **Phase 3**: Semantic topic clustering, cross-PDF citation frequency
 - **Phase 4**: Overleaf integration, Chrome extension, citation graph visualization
 
