@@ -22,6 +22,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { AppHeader } from "@/components/app-header";
+import { InstanceNotice } from "@/components/instance-notice";
 import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
 import {
@@ -250,6 +251,7 @@ export default function Home() {
         {/* Upload zone — show when idle or error */}
         {(stage === "idle" || stage === "error") && (
           <div className="space-y-4">
+            <InstanceNotice />
             <PdfUploadZone onUpload={handleUpload} disabled={false} />
             <div className="rounded-lg border bg-card p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
