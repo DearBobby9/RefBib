@@ -52,8 +52,8 @@ npm install
 npm run dev
 
 # Tests
-cd backend && .venv/bin/pytest       # backend tests (62 tests)
-cd frontend && npx vitest run        # frontend tests (11 tests)
+cd backend && .venv/bin/pytest       # backend tests (84 tests)
+cd frontend && npx vitest run        # frontend tests (16 tests)
 cd frontend && npm run build         # frontend type-check + build
 
 # GROBID (local Docker, optional)
@@ -67,8 +67,8 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 - `app/config.py` — Settings + GROBID_INSTANCES list (6 instances)
 - `app/routers/auth.py` — `/api/verify-password`, `/api/auth/status` (hmac.compare_digest)
 - `app/routers/health.py` — `/api/health`, `/api/grobid-instances`, `/api/grobid-instances/{id}/health`
-- `app/routers/references.py` — `POST /api/extract` (PDF upload + validation + GROBID fallback chain), `POST /api/discovery/check`
-- `app/models/api.py` — Pydantic models (DiscoveryReferenceInput with DOI regex + field length validators)
+- `app/routers/references.py` — `POST /api/extract` (PDF upload + validation + GROBID fallback chain), `POST /api/discovery/check`, `POST /api/resolve-doi`
+- `app/models/api.py` — Pydantic models (DiscoveryReferenceInput, ResolveDoiRequest/Response with DOI regex + field length validators)
 - `app/services/bibtex_assembler.py` — Waterfall orchestrator (CrossRef → S2 → DBLP → fallback)
 - `app/services/discovery_service.py` — Unmatched discovery: probe CrossRef/S2/DBLP for availability (decoupled from match_status)
 - `app/services/grobid_service.py` — GROBID API client with fallback chain
@@ -81,11 +81,18 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 - `app/utils/text_similarity.py` — Title fuzzy matching
 
 ### Frontend (`frontend/`)
-- `src/app/page.tsx` — Main page (upload → progress → results)
-- `src/app/workspace/page.tsx` — Workspace page (dedup stats, source papers, conflict queue, export)
-- `src/components/pdf-upload-zone.tsx` — Drag-and-drop PDF upload
-- `src/components/reference-list.tsx` — Results display with select/filter
-- `src/components/reference-item.tsx` — Individual reference card (clickable title links, Scholar search, fuzzy warnings)
+- `src/app/page.tsx` — Main page (single upload → progress → results, batch upload → batch progress → batch summary)
+- `src/app/workspace/page.tsx` — Workspace page (search/filter, dedup stats, source papers, conflict queue, analytics, export)
+- `src/components/pdf-upload-zone.tsx` — Drag-and-drop PDF upload (supports multi-file, max 20)
+- `src/components/reference-list.tsx` — Results display with select/filter + DOI resolution override
+- `src/components/reference-item.tsx` — Individual reference card (title links, Scholar search, fuzzy warnings, DOI resolve input)
+- `src/components/batch-progress.tsx` — Batch processing progress with per-file status
+- `src/components/batch-summary.tsx` — Batch results summary with stats grid + "Go to Workspace" CTA
+- `src/components/conflict-resolver.tsx` — Interactive conflict merge/keep-both UI
+- `src/components/bibtex-editor.tsx` — Dialog-based BibTeX override editor
+- `src/components/workspace-analytics.tsx` — Recharts dashboard (year bar, venue bar, match pie, most-cited)
+- `src/components/grouped-references.tsx` — Collapsible grouped display by venue/year
+- `src/components/instance-notice.tsx` — Self-hosted instance notice banner
 - `src/components/app-header.tsx` — Top navigation with Extract | Workspace tabs (NavTabs subcomponent)
 - `src/components/site-footer.tsx` — Site footer
 - `src/components/workspace-dock.tsx` — Sticky workspace indicator on extract page
@@ -97,10 +104,12 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 - `src/components/filter-bar.tsx` — Filter by match status
 - `src/components/bibtex-preview.tsx` — BibTeX syntax-highlighted preview
 - `src/hooks/use-extract-references.ts` — Upload + extraction state machine
+- `src/hooks/use-batch-extract.ts` — Multi-PDF sequential batch processing with abort support
 - `src/hooks/use-export-bibtex.ts` — Export logic
 - `src/hooks/use-workspace.ts` — Workspace state (localStorage, V2 schema, O(1) dedup with bigram similarity)
-- `src/lib/api-client.ts` — Backend API functions (extract, discovery, health, auth)
-- `src/lib/types.ts` — TypeScript types (Reference, ExtractResponse, WorkspaceEntry, etc.)
+- `src/lib/api-client.ts` — Backend API functions (extract, discovery, health, auth, resolveByDoi)
+- `src/lib/types.ts` — TypeScript types (Reference, ExtractResponse, WorkspaceEntry, BatchFileResult, etc.)
+- `src/lib/text-utils.ts` — Shared text utilities (normalizeText, buildBigrams, buildPaperId, titleSimilarity)
 - `src/lib/constants.ts` — Shared constants (GROBID instance defaults, storage keys)
 
 ## Current Delivery Snapshot
@@ -108,22 +117,29 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 Implemented now:
 
 - Single PDF upload end-to-end extraction flow
+- Multi-PDF batch upload (sequential processing, max 20, auto-add matched/fuzzy to workspace)
 - GROBID instance picker + health checks + automatic fallback chain
 - Match status UX (`matched` / `fuzzy` / `unmatched`) with search + status filter
+- Manual DOI resolution for unmatched references (`/api/resolve-doi` + inline UI)
 - BibTeX export (copy + download)
 - Password gate and backend cold-start handling
 - Dark mode toggle
 - Local Workspace with dedup (DOI, fingerprint, bigram similarity), conflict queue, workspace-level export
+- Conflict resolution (interactive merge/keep-both in conflict queue)
+- Manual BibTeX editor (override_bibtex with dialog-based textarea)
+- Workspace analytics dashboard (Recharts: year bar, venue bar, match pie, most-cited list)
+- Workspace search/filter (text search + dedup status toggle chips)
+- Venue/Year grouping (collapsible grouped display)
 - Unmatched Discovery (`/api/discovery/check`) — probe CrossRef/S2/DBLP availability
 - App-level navigation (Extract | Workspace tabs)
-- Frontend vitest test suite (11 tests: workspace dedup + component tests)
+- Instance notice banner (self-hosted info, rate limits, GitHub CTA)
+- Frontend vitest test suite (16 tests: workspace dedup + component tests)
+- Backend pytest suite (84 tests)
 
 Not implemented yet:
 
-- Multi-PDF batch upload in one request
-- Multi-workspace management (create/rename/switch/delete)
-- Year/source filters in UI
-- Semantic topic clustering and citation frequency analytics
+- Multi-workspace management (create/rename/switch/delete) — data structure ready, UI pending
+- Semantic topic clustering
 - Overleaf integration / browser extension / citation graph view
 
 ## Key Technical Decisions
@@ -143,13 +159,20 @@ Not implemented yet:
 - Workspace dedup uses O(1) lookup maps (doiMap, fingerprintMap) with bigram similarity fallback (thresholds: ≥0.95 auto-merge, 0.88–0.95 conflict, <0.88 unique).
 - Discovery endpoint uses `DiscoveryReferenceInput` model (decoupled from internal `ParsedReference`) with DOI regex validation and field length caps.
 - Shared constants in `src/lib/constants.ts` to avoid duplication across components.
+- Batch upload processes files sequentially (not concurrently) to respect API rate limits. Max 20 files per batch.
+- DOI resolution: `/api/resolve-doi` strips URL prefixes (`https://doi.org/`, `doi:`) and validates format. Uses CrossRef `_lookup_by_doi` → JSON fallback.
+- DOI resolution uses `resolvedOverrides: Map<number, Partial<Reference>>` pattern in `reference-list.tsx` to overlay resolved data without mutating original extract response.
+- Workspace search filters entries client-side; conflict queue and analytics always use unfiltered data to avoid hiding important items.
+- Workspace analytics uses Recharts library for visualizations.
+- `text-utils.ts` contains shared utilities (normalizeText, buildBigrams, buildPaperId, titleSimilarity) used by both workspace dedup and batch extract.
 
 ## Development Phases
 
 - **Phase 1 (MVP)** ✅: Single PDF → full reference BibTeX list → copy/download. Filter by match status. GROBID instance selection + fallback.
 - **Phase 1.5 (MVP+)** ✅: Workspace with dedup + discovery + navigation.
-- **Phase 2**: Multi-PDF batch upload, multi-workspace management
-- **Phase 3**: Semantic topic clustering, cross-PDF citation frequency
+- **Phase 2 (Workspace Features)** ✅: Conflict resolution, BibTeX editor, analytics dashboard (Recharts), venue/year grouping.
+- **Phase 2.5 (Batch + Search + DOI)** ✅: Multi-PDF batch upload, workspace search/filter, manual DOI resolution.
+- **Phase 3**: Multi-workspace management, semantic topic clustering
 - **Phase 4**: Overleaf integration, Chrome extension, citation graph visualization
 
 ## Deployment
@@ -190,6 +213,16 @@ Example format:
 3. Expected: [what should happen]
 4. Edge case: [what to also try]
 ```
+
+### Post-Push Documentation Sync (Mandatory)
+
+After every `git push`, immediately update ALL related documentation and memory:
+
+1. **CLAUDE.md** — Update "Current Delivery Snapshot", "Key File Locations", "Key Technical Decisions", "Development Phases", test counts, and any other sections affected by the pushed changes.
+2. **Auto-memory** (`~/.claude/projects/.../memory/MEMORY.md`) — Update project status, features implemented, phase progress, and any new patterns or conventions.
+3. **Topic memory files** — Update or create relevant topic files (e.g., `patterns.md`) if new patterns/conventions were established.
+
+Do NOT wait for the user to ask — this is automatic after every push.
 
 ## Constraints & Risks
 
