@@ -162,6 +162,35 @@ Not implemented yet:
   - Deploy: `cd backend && fly deploy`
 - No secrets in repo — all config via env vars / platform secrets
 
+## Workflow Rules
+
+### Post-Implementation Review (Mandatory)
+
+After completing a feature, bug fix, or any meaningful code change:
+
+1. **Auto-review with SuperPowers** — Immediately dispatch `superpowers:code-reviewer` to review the diff. Do NOT skip this step or wait for the user to ask.
+2. **Report review results** — Summarize the review findings (Critical / Important / Suggestion) to the user. Fix Critical and Important issues before moving on.
+3. **Manual testing guide** — After the review, provide a 中英文混合 manual testing guide that tells the user exactly how to verify the changes as a real human tester. Format:
+   - 列出每个需要手动测试的场景 (list each scenario to test)
+   - 给出具体的操作步骤 (provide concrete steps: click what, type what, expect what)
+   - 标注 expected behavior 和 edge cases
+   - 如果涉及多个页面/流程，按顺序排列测试路径
+
+Example format:
+```
+### 手动测试指南 (Manual Testing Guide)
+
+**前置条件 (Prerequisites):**
+- `npm run dev` 启动前端
+- Backend running on port 8000
+
+**测试场景 1: [Feature Name]**
+1. 打开 http://localhost:3000
+2. 操作: [specific action]
+3. Expected: [what should happen]
+4. Edge case: [what to also try]
+```
+
 ## Constraints & Risks
 
 - API rate limits on CrossRef / Semantic Scholar — cache BibTeX results by DOI at scale

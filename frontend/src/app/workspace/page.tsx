@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
-import { Download, FolderOpen, Trash2 } from "lucide-react";
+import { Download, FolderOpen, Search, Trash2 } from "lucide-react";
 import { AppHeader } from "@/components/app-header";
 import { BibtexEditor } from "@/components/bibtex-editor";
 import { ConflictResolver } from "@/components/conflict-resolver";
@@ -11,6 +11,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { WorkspaceAnalytics } from "@/components/workspace-analytics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -20,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { useExportBibtex } from "@/hooks/use-export-bibtex";
 import { useWorkspace } from "@/hooks/use-workspace";
-import { GroupByMode, WorkspaceEntry } from "@/lib/types";
+import { DedupStatus, GroupByMode, WorkspaceEntry } from "@/lib/types";
 
 function dedupBadgeVariant(status: "unique" | "merged" | "conflict") {
   if (status === "conflict") return "destructive";
@@ -76,6 +77,48 @@ export default function WorkspacePage() {
   } = useWorkspace();
   const { downloadWorkspaceBib } = useExportBibtex();
   const [groupBy, setGroupBy] = useState<GroupByMode>("none");
+  const [wsSearch, setWsSearch] = useState("");
+  const [wsDedupFilter, setWsDedupFilter] = useState<Set<DedupStatus>>(
+    () => new Set(["unique", "merged", "conflict"])
+  );
+
+  const dedupCounts = useMemo(() => {
+    const counts: Record<DedupStatus, number> = { unique: 0, merged: 0, conflict: 0 };
+    for (const entry of entries) {
+      counts[entry.dedup_status] += 1;
+    }
+    return counts;
+  }, [entries]);
+
+  const filteredEntries = useMemo(() => {
+    return entries.filter((entry) => {
+      if (!wsDedupFilter.has(entry.dedup_status)) return false;
+      if (wsSearch) {
+        const q = wsSearch.toLowerCase();
+        const haystack = [
+          entry.reference.title,
+          entry.reference.raw_citation,
+          ...entry.reference.authors,
+          entry.reference.venue,
+          entry.reference.doi,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [entries, wsSearch, wsDedupFilter]);
+
+  const toggleDedupFilter = useCallback((status: DedupStatus) => {
+    setWsDedupFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) next.delete(status);
+      else next.add(status);
+      return next;
+    });
+  }, []);
 
   const conflictEntries = useMemo(
     () => entries.filter((entry) => entry.dedup_status === "conflict"),
@@ -84,10 +127,10 @@ export default function WorkspacePage() {
 
   const allEntriesExpanded = useMemo(
     () =>
-      entries.flatMap((entry) =>
+      filteredEntries.flatMap((entry) =>
         Array.from({ length: entry.occurrence_count }, () => entry)
       ),
-    [entries]
+    [filteredEntries]
   );
 
   const groupedByPaper = useMemo(() => {
@@ -215,6 +258,46 @@ export default function WorkspacePage() {
           </section>
         ) : (
           <>
+            <section className="space-y-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search references..."
+                    value={wsSearch}
+                    onChange={(e) => setWsSearch(e.target.value)}
+                    className="pl-9 h-9"
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  {(["unique", "merged", "conflict"] as DedupStatus[]).map(
+                    (status) => (
+                      <Button
+                        key={status}
+                        variant={wsDedupFilter.has(status) ? "default" : "outline"}
+                        size="sm"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => toggleDedupFilter(status)}
+                      >
+                        {status}
+                        <Badge
+                          variant="secondary"
+                          className="h-4 min-w-[16px] text-[10px] px-1"
+                        >
+                          {dedupCounts[status]}
+                        </Badge>
+                      </Button>
+                    )
+                  )}
+                </div>
+              </div>
+              {filteredEntries.length < entries.length && (
+                <p className="text-xs text-muted-foreground">
+                  Showing {filteredEntries.length} of {entries.length} entries
+                </p>
+              )}
+            </section>
+
             <WorkspaceAnalytics entries={entries} />
 
             <ConflictResolver
@@ -243,7 +326,7 @@ export default function WorkspacePage() {
                 </Select>
               </div>
               <GroupedReferences
-                entries={entries}
+                entries={filteredEntries}
                 groupBy={groupBy}
                 renderEntry={renderEntry}
               />

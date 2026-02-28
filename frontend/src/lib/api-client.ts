@@ -4,6 +4,7 @@ import {
   ExtractResponse,
   GrobidInstancesResponse,
   Reference,
+  ResolveDoiResponse,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -100,6 +101,27 @@ export async function verifyPassword(password: string): Promise<boolean> {
   if (!response.ok) return false;
   const data: { valid: boolean } = await response.json();
   return data.valid;
+}
+
+export async function resolveByDoi(
+  doi: string,
+  signal?: AbortSignal
+): Promise<ResolveDoiResponse> {
+  const response = await fetch(`${API_BASE}/api/resolve-doi`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ doi }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const error: ExtractError = await response.json().catch(() => ({
+      detail: `Server error (${response.status})`,
+    }));
+    throw new Error(error.detail);
+  }
+
+  return response.json();
 }
 
 export async function checkGrobidHealth(

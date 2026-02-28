@@ -14,6 +14,7 @@ import {
 import {
   DiscoveryResult,
   ExtractResponse,
+  MatchSource,
   MatchStatus,
   Reference,
   WorkspaceAddResult,
@@ -39,6 +40,18 @@ export function ReferenceList({
   getCachedDiscovery,
   onCheckAvailability,
 }: ReferenceListProps) {
+  const [resolvedOverrides, setResolvedOverrides] = useState<
+    Map<number, Partial<Reference>>
+  >(() => new Map());
+
+  const effectiveRefs = useMemo(() => {
+    if (resolvedOverrides.size === 0) return data.references;
+    return data.references.map((ref) => {
+      const override = resolvedOverrides.get(ref.index);
+      return override ? { ...ref, ...override } : ref;
+    });
+  }, [data.references, resolvedOverrides]);
+
   const [selected, setSelected] = useState<Set<number>>(
     () => new Set(data.references.map((r) => r.index))
   );
@@ -48,7 +61,7 @@ export function ReferenceList({
   });
 
   const filteredRefs = useMemo(() => {
-    return data.references.filter((ref) => {
+    return effectiveRefs.filter((ref) => {
       if (!filters.statuses.has(ref.match_status)) return false;
       if (filters.search) {
         const q = filters.search.toLowerCase();
@@ -65,11 +78,11 @@ export function ReferenceList({
       }
       return true;
     });
-  }, [data.references, filters]);
+  }, [effectiveRefs, filters]);
 
   const selectedRefs = useMemo(
-    () => data.references.filter((r) => selected.has(r.index)),
-    [data.references, selected]
+    () => effectiveRefs.filter((r) => selected.has(r.index)),
+    [effectiveRefs, selected]
   );
   const filteredIndexSet = useMemo(
     () => new Set(filteredRefs.map((r) => r.index)),
@@ -112,6 +125,28 @@ export function ReferenceList({
       return next;
     });
   }, [filteredRefs]);
+
+  const handleResolveByDoi = useCallback(
+    (
+      index: number,
+      bibtex: string,
+      url: string | null,
+      citationKey: string | null
+    ) => {
+      setResolvedOverrides((prev) => {
+        const next = new Map(prev);
+        next.set(index, {
+          bibtex,
+          url,
+          citation_key: citationKey,
+          match_status: "matched" as MatchStatus,
+          match_source: "crossref" as MatchSource,
+        });
+        return next;
+      });
+    },
+    []
+  );
 
   return (
     <div className="space-y-4">
@@ -176,7 +211,7 @@ export function ReferenceList({
       </Collapsible>
 
       <FilterBar
-        references={data.references}
+        references={effectiveRefs}
         filters={filters}
         onFiltersChange={setFilters}
         selectedCount={selectedVisibleCount}
@@ -195,6 +230,7 @@ export function ReferenceList({
             onToggle={toggleRef}
             getCachedDiscovery={getCachedDiscovery}
             onCheckAvailability={onCheckAvailability}
+            onResolveByDoi={handleResolveByDoi}
           />
         ))}
         {filteredRefs.length === 0 && (

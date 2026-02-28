@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { PdfUploadZone } from "@/components/pdf-upload-zone";
 import { ProgressIndicator } from "@/components/progress-indicator";
 import { ReferenceList } from "@/components/reference-list";
+import { BatchProgress } from "@/components/batch-progress";
+import { BatchSummary } from "@/components/batch-summary";
 import { useExtractReferences } from "@/hooks/use-extract-references";
+import { useBatchExtract } from "@/hooks/use-batch-extract";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { PasswordGate } from "@/components/password-gate";
 import {
@@ -13,6 +16,7 @@ import {
   fetchGrobidInstances,
 } from "@/lib/api-client";
 import { DiscoveryResult, GrobidInstance, Reference } from "@/lib/types";
+import { buildPaperId } from "@/lib/text-utils";
 import {
   AlertCircle,
   AlertTriangle,
@@ -32,17 +36,25 @@ import {
 
 const INSTANCE_CHECK_TIMEOUT_MS = 65_000;
 
+type ViewMode = "single" | "batch";
+
 interface CurrentPaper {
   id: string;
   label: string;
 }
 
-function buildPaperId(file: File): string {
-  return `${file.name}:${file.size}:${file.lastModified}`;
-}
-
 export default function Home() {
+  const [viewMode, setViewMode] = useState<ViewMode>("single");
   const { stage, data, error, extract, reset } = useExtractReferences();
+  const {
+    batchStage,
+    fileResults,
+    currentIndex,
+    summary: batchSummary,
+    startBatch,
+    cancelBatch,
+    resetBatch,
+  } = useBatchExtract();
   const {
     stats: workspaceStats,
     addReferences,
@@ -115,19 +127,27 @@ export default function Home() {
   }, [loadInstances]);
 
   const handleUpload = useCallback(
-    (file: File) => {
-      setCurrentPaper({
-        id: buildPaperId(file),
-        label: file.name,
-      });
-      return extract(file, grobidInstanceId);
+    (files: File[]) => {
+      if (files.length === 1) {
+        setViewMode("single");
+        setCurrentPaper({
+          id: buildPaperId(files[0]),
+          label: files[0].name,
+        });
+        return extract(files[0], grobidInstanceId);
+      }
+      // Batch mode for 2+ files
+      setViewMode("batch");
+      void startBatch(files, grobidInstanceId, addReferences);
     },
-    [extract, grobidInstanceId]
+    [extract, grobidInstanceId, startBatch, addReferences]
   );
   const handleReset = useCallback(() => {
     setCurrentPaper(null);
     reset();
-  }, [reset]);
+    resetBatch();
+    setViewMode("single");
+  }, [reset, resetBatch]);
   const handleAddToWorkspace = useCallback(
     (references: Reference[]) => {
       if (!currentPaper) {
@@ -248,8 +268,9 @@ export default function Home() {
       />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-8 flex-1">
-        {/* Upload zone — show when idle or error */}
-        {(stage === "idle" || stage === "error") && (
+        {/* Upload zone — show when idle or error (and not in batch mode) */}
+        {(stage === "idle" || stage === "error") &&
+          batchStage === "idle" && (
           <div className="space-y-4">
             <InstanceNotice />
             <PdfUploadZone onUpload={handleUpload} disabled={false} />
@@ -337,13 +358,14 @@ export default function Home() {
           </div>
         )}
 
-        {/* Progress indicator — show during processing */}
-        {(stage === "uploading" ||
-          stage === "parsing" ||
-          stage === "resolving") && <ProgressIndicator stage={stage} />}
+        {/* Single-file progress indicator */}
+        {viewMode === "single" &&
+          (stage === "uploading" ||
+            stage === "parsing" ||
+            stage === "resolving") && <ProgressIndicator stage={stage} />}
 
-        {/* Results — show when done */}
-        {stage === "done" && data && (
+        {/* Single-file results */}
+        {viewMode === "single" && stage === "done" && data && (
           <ReferenceList
             data={data}
             onReset={handleReset}
@@ -353,6 +375,26 @@ export default function Home() {
             onCheckAvailability={handleCheckAvailability}
           />
         )}
+
+        {/* Batch progress */}
+        {viewMode === "batch" && batchStage === "processing" && (
+          <BatchProgress
+            fileResults={fileResults}
+            currentIndex={currentIndex}
+            onCancel={cancelBatch}
+          />
+        )}
+
+        {/* Batch summary */}
+        {viewMode === "batch" &&
+          (batchStage === "done" || batchStage === "cancelled") && (
+            <BatchSummary
+              summary={batchSummary}
+              fileResults={fileResults}
+              cancelled={batchStage === "cancelled"}
+              onUploadMore={handleReset}
+            />
+          )}
       </div>
 
       <SiteFooter />

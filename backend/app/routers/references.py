@@ -1,6 +1,7 @@
 """POST /api/extract — upload PDF and get BibTeX references."""
 
 import logging
+import re
 import time
 from typing import Optional
 
@@ -12,9 +13,12 @@ from app.models.api import (
     DiscoveryCheckRequest,
     DiscoveryCheckResponse,
     ExtractResponse,
+    ResolveDoiRequest,
+    ResolveDoiResponse,
 )
 from app.models.reference import MatchStatus
 from app.services.bibtex_assembler import BibTeXAssembler
+from app.services.crossref_service import CrossRefService
 from app.services.discovery_service import DiscoveryService
 from app.services.grobid_service import parse_pdf_references
 from app.services.grobid_xml_parser import parse_tei_xml
@@ -207,3 +211,25 @@ async def check_discovery(request: Request, payload: DiscoveryCheckRequest):
     )
     results = await discovery.check_all(payload.references)
     return DiscoveryCheckResponse(results=results)
+
+
+@router.post("/resolve-doi", response_model=ResolveDoiResponse)
+async def resolve_doi(request: Request, payload: ResolveDoiRequest):
+    """Resolve a DOI to BibTeX via CrossRef."""
+    service = CrossRefService(
+        request.app.state.http_client,
+        request.app.state.crossref_rate_limiter,
+    )
+    result = await service.resolve_by_doi(payload.doi)
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No BibTeX found for DOI: {payload.doi}",
+        )
+    bibtex, url = result
+    key_match = re.match(r"@\w+\{([^,]+),", bibtex)
+    return ResolveDoiResponse(
+        bibtex=bibtex,
+        url=url,
+        citation_key=key_match.group(1) if key_match else None,
+    )

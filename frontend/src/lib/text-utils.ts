@@ -17,6 +17,10 @@ export function buildBigrams(value: string): Set<string> {
   return grams;
 }
 
+export function buildPaperId(file: File): string {
+  return `${file.name}:${file.size}:${file.lastModified}`;
+}
+
 export function titleSimilarity(a: string | null, b: string | null): number {
   if (!a || !b) return 0;
   const gramsA = buildBigrams(a);

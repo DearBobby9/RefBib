@@ -4,23 +4,32 @@ import { useCallback, useRef, useState } from "react";
 import { Upload, FileText, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+const MAX_BATCH_FILES = 20;
+
 interface PdfUploadZoneProps {
-  onUpload: (file: File) => void;
+  onUpload: (files: File[]) => void;
   disabled?: boolean;
 }
 
 export function PdfUploadZone({ onUpload, disabled }: PdfUploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [tooManyError, setTooManyError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = useCallback(
-    (file: File) => {
-      if (!file.name.toLowerCase().endsWith(".pdf")) {
+  const handleFiles = useCallback(
+    (files: File[]) => {
+      const pdfs = files.filter((f) =>
+        f.name.toLowerCase().endsWith(".pdf")
+      );
+      if (pdfs.length === 0) return;
+      if (pdfs.length > MAX_BATCH_FILES) {
+        setTooManyError(true);
         return;
       }
-      setSelectedFile(file);
-      onUpload(file);
+      setTooManyError(false);
+      setSelectedFiles(pdfs);
+      onUpload(pdfs);
     },
     [onUpload]
   );
@@ -30,10 +39,10 @@ export function PdfUploadZone({ onUpload, disabled }: PdfUploadZoneProps) {
       e.preventDefault();
       setIsDragging(false);
       if (disabled) return;
-      const file = e.dataTransfer.files[0];
-      if (file) handleFile(file);
+      const files = Array.from(e.dataTransfer.files);
+      handleFiles(files);
     },
-    [disabled, handleFile]
+    [disabled, handleFiles]
   );
 
   const handleDragOver = useCallback(
@@ -52,14 +61,14 @@ export function PdfUploadZone({ onUpload, disabled }: PdfUploadZoneProps) {
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) handleFile(file);
+      const files = Array.from(e.target.files || []);
+      handleFiles(files);
       e.target.value = "";
     },
-    [handleFile]
+    [handleFiles]
   );
 
-  const clearFile = useCallback(() => setSelectedFile(null), []);
+  const clearFiles = useCallback(() => setSelectedFiles([]), []);
 
   return (
     <div className="w-full">
@@ -80,29 +89,50 @@ export function PdfUploadZone({ onUpload, disabled }: PdfUploadZoneProps) {
         </div>
         <div className="text-center">
           <p className="text-lg font-medium">
-            Drop your PDF here, or click to browse
+            Drop your PDFs here, or click to browse
           </p>
           <p className="text-sm text-muted-foreground mt-1">
-            Academic papers with a reference section (max 50MB)
+            One or more academic papers with reference sections (max 50MB each)
           </p>
         </div>
         <input
           ref={inputRef}
           type="file"
           accept=".pdf"
+          multiple
           onChange={handleInputChange}
           className="hidden"
           disabled={disabled}
         />
       </div>
 
-      {selectedFile && (
+      {tooManyError && (
+        <p className="mt-2 text-sm text-destructive">
+          Too many files. Please select up to {MAX_BATCH_FILES} PDFs at a time.
+        </p>
+      )}
+
+      {selectedFiles.length > 0 && (
         <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
           <FileText className="h-4 w-4" />
-          <span className="truncate">{selectedFile.name}</span>
-          <span className="text-xs">
-            ({(selectedFile.size / 1024 / 1024).toFixed(1)} MB)
-          </span>
+          {selectedFiles.length === 1 ? (
+            <>
+              <span className="truncate">{selectedFiles[0].name}</span>
+              <span className="text-xs">
+                ({(selectedFiles[0].size / 1024 / 1024).toFixed(1)} MB)
+              </span>
+            </>
+          ) : (
+            <span>
+              {selectedFiles.length} PDFs selected (
+              {(
+                selectedFiles.reduce((sum, f) => sum + f.size, 0) /
+                1024 /
+                1024
+              ).toFixed(1)}{" "}
+              MB total)
+            </span>
+          )}
           {!disabled && (
             <Button
               variant="ghost"
@@ -110,7 +140,7 @@ export function PdfUploadZone({ onUpload, disabled }: PdfUploadZoneProps) {
               className="h-5 w-5 ml-auto"
               onClick={(e) => {
                 e.stopPropagation();
-                clearFile();
+                clearFiles();
               }}
             >
               <X className="h-3 w-3" />

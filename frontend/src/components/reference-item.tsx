@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, Link2, Loader2, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { resolveByDoi } from "@/lib/api-client";
 import { BibtexPreview } from "./bibtex-preview";
 import {
   DiscoveryResult,
@@ -37,6 +40,12 @@ interface ReferenceItemProps {
   onToggle: (index: number) => void;
   getCachedDiscovery?: (reference: Reference) => DiscoveryResult | null;
   onCheckAvailability?: (reference: Reference) => Promise<DiscoveryResult>;
+  onResolveByDoi?: (
+    index: number,
+    bibtex: string,
+    url: string | null,
+    citationKey: string | null
+  ) => void;
 }
 
 export function ReferenceItem({
@@ -45,12 +54,17 @@ export function ReferenceItem({
   onToggle,
   getCachedDiscovery,
   onCheckAvailability,
+  onResolveByDoi,
 }: ReferenceItemProps) {
   const [expanded, setExpanded] = useState(false);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [discoveryResult, setDiscoveryResult] = useState<DiscoveryResult | null>(
     () => (getCachedDiscovery ? getCachedDiscovery(reference) : null)
   );
+  const [showDoiInput, setShowDoiInput] = useState(false);
+  const [doiInput, setDoiInput] = useState("");
+  const [resolvingDoi, setResolvingDoi] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
   const { label, variant } = STATUS_STYLES[reference.match_status];
   const titleText = reference.title || reference.raw_citation || "Untitled reference";
   const scholarSearchUrl = reference.title
@@ -86,6 +100,35 @@ export function ReferenceItem({
       });
     } finally {
       setCheckingAvailability(false);
+    }
+  };
+
+  const resolveAbortRef = useRef<AbortController | null>(null);
+
+  const handleResolveDoi = async () => {
+    if (!doiInput.trim() || resolvingDoi || !onResolveByDoi) return;
+    resolveAbortRef.current?.abort();
+    const controller = new AbortController();
+    resolveAbortRef.current = controller;
+    setResolvingDoi(true);
+    setResolveError(null);
+    try {
+      const result = await resolveByDoi(doiInput.trim(), controller.signal);
+      onResolveByDoi(
+        reference.index,
+        result.bibtex,
+        result.url,
+        result.citation_key
+      );
+      setShowDoiInput(false);
+      setDoiInput("");
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      setResolveError(
+        err instanceof Error ? err.message : "Failed to resolve DOI"
+      );
+    } finally {
+      setResolvingDoi(false);
     }
   };
 
@@ -189,6 +232,20 @@ export function ReferenceItem({
                 DOI
               </a>
             )}
+            {reference.match_status === "unmatched" && onResolveByDoi && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDoiInput(!showDoiInput);
+                  setResolveError(null);
+                }}
+                className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+              >
+                <Link2 className="h-3 w-3" />
+                Resolve by DOI
+              </button>
+            )}
           </div>
           {reference.match_status === "unmatched" && discoveryResult && (
             <div className="mt-1 text-[11px]">
@@ -226,6 +283,36 @@ export function ReferenceItem({
                 <span className="text-muted-foreground">
                   {discoveryResult.reason || "Skipped."}
                 </span>
+              )}
+            </div>
+          )}
+          {showDoiInput && (
+            <div className="mt-2 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Paste DOI (e.g., 10.1234/...)"
+                  value={doiInput}
+                  onChange={(e) => setDoiInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleResolveDoi()}
+                  className="h-7 text-xs flex-1"
+                  disabled={resolvingDoi}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <Button
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleResolveDoi();
+                  }}
+                  disabled={!doiInput.trim() || resolvingDoi}
+                >
+                  {resolvingDoi && <Loader2 className="h-3 w-3 animate-spin" />}
+                  Resolve
+                </Button>
+              </div>
+              {resolveError && (
+                <p className="text-[11px] text-destructive">{resolveError}</p>
               )}
             </div>
           )}

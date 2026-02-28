@@ -210,6 +210,27 @@ class CrossRefService:
 
         return None
 
+    async def resolve_by_doi(self, doi: str) -> tuple[str, str | None] | None:
+        """Resolve a DOI to BibTeX.
+
+        Returns:
+            ``(bibtex_string, url)`` or ``None`` if the DOI could not be resolved.
+        """
+        url = f"https://doi.org/{doi}"
+        bibtex = await self._lookup_by_doi(doi)
+        if bibtex:
+            return (bibtex, url)
+        item = await self._fetch_work_metadata(doi)
+        if item:
+            bibtex = build_bibtex_from_crossref_json(item)
+            if bibtex:
+                logger.info(
+                    "[CrossRefService] resolve_by_doi: constructed BibTeX from JSON for doi=%s",
+                    doi,
+                )
+                return (bibtex, url)
+        return None
+
     async def _fetch_work_metadata(self, doi: str) -> dict | None:
         """Fetch CrossRef work metadata JSON for a DOI."""
         url = f"https://api.crossref.org/works/{quote(doi, safe='')}"

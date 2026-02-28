@@ -95,3 +95,23 @@ class DiscoveryCheckRequest(BaseModel):
 
 class DiscoveryCheckResponse(BaseModel):
     results: list[DiscoveryResult]
+
+
+class ResolveDoiRequest(BaseModel):
+    doi: str = Field(..., description="DOI identifier to resolve")
+
+    @field_validator("doi")
+    @classmethod
+    def validate_doi(cls, v: str) -> str:
+        v = v.strip()
+        v = re.sub(r"^https?://(dx\.)?doi\.org/", "", v)
+        v = re.sub(r"^doi:\s*", "", v, flags=re.IGNORECASE)
+        if not _DOI_PATTERN.match(v):
+            raise ValueError("Invalid DOI format. Expected: 10.XXXX/...")
+        return v
+
+
+class ResolveDoiResponse(BaseModel):
+    bibtex: str
+    url: str | None = None
+    citation_key: str | None = None

@@ -99,6 +99,12 @@ export interface DiscoveryCheckResponse {
   results: DiscoveryResult[];
 }
 
+export interface ResolveDoiResponse {
+  bibtex: string;
+  url: string | null;
+  citation_key: string | null;
+}
+
 export interface DiscoveryCacheEntry {
   result: DiscoveryResult;
   checked_at: number;
@@ -119,6 +125,28 @@ export interface WorkspaceStoreV2 {
   entries: WorkspaceEntry[];
   discovery_cache: Record<string, DiscoveryCacheEntry>;
   updated_at: number;
+}
+
+export type BatchStage = "idle" | "processing" | "done" | "cancelled";
+
+export interface BatchFileResult {
+  file: File;
+  paperId: string;
+  status: "pending" | "processing" | "done" | "error";
+  data: ExtractResponse | null;
+  error: string | null;
+  workspaceResult: WorkspaceAddResult | null;
+}
+
+export interface BatchSummary {
+  totalPapers: number;
+  processedPapers: number;
+  failedPapers: number;
+  totalRefs: number;
+  matchedRefs: number;
+  addedToWorkspace: number;
+  mergedInWorkspace: number;
+  conflictsInWorkspace: number;
 }
 
 export interface WorkspaceReferenceView {
