@@ -2,11 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PdfUploadZone } from "@/components/pdf-upload-zone";
-import { ProgressIndicator } from "@/components/progress-indicator";
-import { ReferenceList } from "@/components/reference-list";
 import { BatchProgress } from "@/components/batch-progress";
 import { BatchSummary } from "@/components/batch-summary";
-import { useExtractReferences } from "@/hooks/use-extract-references";
 import { useBatchExtract } from "@/hooks/use-batch-extract";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useNotificationSound } from "@/hooks/use-notification-sound";
@@ -17,9 +14,7 @@ import {
   fetchGrobidInstances,
 } from "@/lib/api-client";
 import { DiscoveryResult, GrobidInstance, Reference } from "@/lib/types";
-import { buildPaperId } from "@/lib/text-utils";
 import {
-  AlertCircle,
   AlertTriangle,
   CircleCheck,
   Loader2,
@@ -37,16 +32,7 @@ import {
 
 const INSTANCE_CHECK_TIMEOUT_MS = 65_000;
 
-type ViewMode = "single" | "batch";
-
-interface CurrentPaper {
-  id: string;
-  label: string;
-}
-
 export default function Home() {
-  const [viewMode, setViewMode] = useState<ViewMode>("single");
-  const { stage, data, error, extract, reset } = useExtractReferences();
   const {
     batchStage,
     fileResults,
@@ -55,6 +41,10 @@ export default function Home() {
     startBatch,
     cancelBatch,
     resetBatch,
+    resumeBatch,
+    retryFile,
+    appendFiles,
+    updateFileWorkspaceResult,
   } = useBatchExtract();
   const { initialize: initSound, play: playDoneSound } =
     useNotificationSound();
@@ -82,7 +72,6 @@ export default function Home() {
   const [instancesError, setInstancesError] = useState<string | null>(null);
   const [autoSelecting, setAutoSelecting] = useState(false);
   const [checkingInstanceId, setCheckingInstanceId] = useState<string | null>(null);
-  const [currentPaper, setCurrentPaper] = useState<CurrentPaper | null>(null);
   const [instanceActionMessage, setInstanceActionMessage] = useState<{
     type: "success" | "warning";
     text: string;
@@ -132,30 +121,25 @@ export default function Home() {
   const handleUpload = useCallback(
     (files: File[]) => {
       void initSound(); // Satisfy autoplay policy on user gesture
-      if (files.length === 1) {
-        setViewMode("single");
-        setCurrentPaper({
-          id: buildPaperId(files[0]),
-          label: files[0].name,
-        });
-        return extract(files[0], grobidInstanceId);
-      }
-      // Batch mode for 2+ files
-      setViewMode("batch");
-      void startBatch(files, grobidInstanceId, addReferences);
+      void startBatch(files, grobidInstanceId);
     },
-    [extract, grobidInstanceId, startBatch, addReferences, initSound]
+    [grobidInstanceId, startBatch, initSound]
+  );
+
+  const handleAppendFiles = useCallback(
+    (files: File[]) => {
+      appendFiles(files);
+      // Don't call resumeBatch if already processing — the current loop
+      // will finish and new pending files will show "Resume Remaining".
+      if (batchStage !== "processing") {
+        void resumeBatch(grobidInstanceId);
+      }
+    },
+    [appendFiles, batchStage, resumeBatch, grobidInstanceId]
   );
 
   // Play notification chime when extraction finishes
-  const prevStageRef = useRef(stage);
   const prevBatchStageRef = useRef(batchStage);
-  useEffect(() => {
-    if (prevStageRef.current !== "done" && stage === "done") {
-      playDoneSound();
-    }
-    prevStageRef.current = stage;
-  }, [stage, playDoneSound]);
   useEffect(() => {
     const prev = prevBatchStageRef.current;
     if (prev !== "done" && batchStage === "done") {
@@ -163,25 +147,58 @@ export default function Home() {
     }
     prevBatchStageRef.current = batchStage;
   }, [batchStage, playDoneSound]);
+
   const handleReset = useCallback(() => {
-    setCurrentPaper(null);
-    reset();
     resetBatch();
-    setViewMode("single");
-  }, [reset, resetBatch]);
-  const handleAddToWorkspace = useCallback(
-    (references: Reference[]) => {
-      if (!currentPaper) {
-        return { added: 0, merged: 0, conflicts: 0 };
-      }
-      return addReferences({
-        paperId: currentPaper.id,
-        paperLabel: currentPaper.label,
-        references,
-      });
+  }, [resetBatch]);
+
+  const handleResetWithConfirm = useCallback(() => {
+    const hasUnreviewed = fileResults.some(
+      (fr) => fr.status === "done" && !fr.workspaceResult
+    );
+    if (hasUnreviewed) {
+      if (
+        !window.confirm(
+          "Extraction results not added to workspace will be lost. Continue?"
+        )
+      )
+        return;
+    }
+    handleReset();
+  }, [fileResults, handleReset]);
+  const handleResumeBatch = useCallback(() => {
+    void resumeBatch(grobidInstanceId);
+  }, [resumeBatch, grobidInstanceId]);
+  const handleRetryFile = useCallback(
+    (paperId: string) => {
+      void retryFile(paperId, grobidInstanceId);
     },
-    [addReferences, currentPaper]
+    [retryFile, grobidInstanceId]
   );
+  const handleAddToWorkspaceForFile = useCallback(
+    (paperId: string, paperLabel: string, references: Reference[]) => {
+      const result = addReferences({ paperId, paperLabel, references });
+      updateFileWorkspaceResult(paperId, result);
+      return result;
+    },
+    [addReferences, updateFileWorkspaceResult]
+  );
+  const handleBatchAddAllMatched = useCallback(() => {
+    for (const fr of fileResults) {
+      if (fr.status !== "done" || !fr.data) continue;
+      const matched = fr.data.references.filter(
+        (r) => r.bibtex && r.match_status !== "unmatched"
+      );
+      if (matched.length > 0) {
+        const result = addReferences({
+          paperId: fr.paperId,
+          paperLabel: fr.file.name,
+          references: matched,
+        });
+        updateFileWorkspaceResult(fr.paperId, result);
+      }
+    }
+  }, [fileResults, addReferences, updateFileWorkspaceResult]);
   const handleCheckAvailability = useCallback(
     async (reference: Reference): Promise<DiscoveryResult> => {
       const cached = getCachedDiscovery(reference);
@@ -289,9 +306,8 @@ export default function Home() {
       />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-8 flex-1">
-        {/* Upload zone — show when idle or error (and not in batch mode) */}
-        {(stage === "idle" || stage === "error") &&
-          batchStage === "idle" && (
+        {/* Upload zone — show when idle */}
+        {batchStage === "idle" && (
           <div className="space-y-4">
             <InstanceNotice />
             <PdfUploadZone onUpload={handleUpload} disabled={false} />
@@ -357,65 +373,36 @@ export default function Home() {
                 </div>
               ) : null}
             </div>
-            {stage === "error" && error && (
-              <div className="flex items-start gap-3 rounded-lg border border-destructive/50 bg-destructive/5 p-4">
-                <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-destructive">
-                    Extraction failed
-                  </p>
-                  <p className="text-sm text-muted-foreground">{error}</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleReset}
-                    className="mt-2"
-                  >
-                    Try again
-                  </Button>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
-        {/* Single-file progress indicator */}
-        {viewMode === "single" &&
-          (stage === "uploading" ||
-            stage === "parsing" ||
-            stage === "resolving") && <ProgressIndicator stage={stage} />}
-
-        {/* Single-file results */}
-        {viewMode === "single" && stage === "done" && data && (
-          <ReferenceList
-            data={data}
-            onReset={handleReset}
-            workspaceStats={workspaceStats}
-            onAddToWorkspace={handleAddToWorkspace}
-            getCachedDiscovery={getCachedDiscovery}
-            onCheckAvailability={handleCheckAvailability}
-          />
-        )}
-
-        {/* Batch progress */}
-        {viewMode === "batch" && batchStage === "processing" && (
+        {/* Processing progress */}
+        {batchStage === "processing" && (
           <BatchProgress
             fileResults={fileResults}
             currentIndex={currentIndex}
             onCancel={cancelBatch}
+            onAppendFiles={handleAppendFiles}
           />
         )}
 
-        {/* Batch summary */}
-        {viewMode === "batch" &&
-          (batchStage === "done" || batchStage === "cancelled") && (
-            <BatchSummary
-              summary={batchSummary}
-              fileResults={fileResults}
-              cancelled={batchStage === "cancelled"}
-              onUploadMore={handleReset}
-            />
-          )}
+        {/* Results — done or cancelled */}
+        {(batchStage === "done" || batchStage === "cancelled") && (
+          <BatchSummary
+            summary={batchSummary}
+            fileResults={fileResults}
+            cancelled={batchStage === "cancelled"}
+            onUploadMore={handleResetWithConfirm}
+            onResume={handleResumeBatch}
+            onRetryFile={handleRetryFile}
+            workspaceStats={workspaceStats}
+            onAddToWorkspaceForFile={handleAddToWorkspaceForFile}
+            onBatchAddAllMatched={handleBatchAddAllMatched}
+            getCachedDiscovery={getCachedDiscovery}
+            onCheckAvailability={handleCheckAvailability}
+            onAppendFiles={handleAppendFiles}
+          />
+        )}
       </div>
 
       <SiteFooter />

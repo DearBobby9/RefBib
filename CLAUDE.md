@@ -85,7 +85,7 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 - `src/app/workspace/page.tsx` — Workspace page (search/filter, dedup stats, source papers, conflict queue, analytics, export)
 - `src/components/pdf-upload-zone.tsx` — Drag-and-drop PDF upload (supports multi-file, max 20)
 - `src/components/reference-list.tsx` — Results display with select/filter + DOI resolution override
-- `src/components/reference-item.tsx` — Individual reference card (title links, Scholar search, fuzzy warnings, DOI resolve input)
+- `src/components/reference-item.tsx` — Individual reference card (title links, Scholar search for all statuses, fuzzy warnings, DOI resolve input)
 - `src/components/batch-progress.tsx` — Batch processing progress with per-file status
 - `src/components/batch-summary.tsx` — Batch results summary with stats grid + "Go to Workspace" CTA
 - `src/components/conflict-resolver.tsx` — Interactive conflict merge/keep-both UI
@@ -103,14 +103,14 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 - `src/components/export-toolbar.tsx` — Export .bib / copy to clipboard + Add to Workspace
 - `src/components/filter-bar.tsx` — Filter by match status
 - `src/components/bibtex-preview.tsx` — BibTeX syntax-highlighted preview
-- `src/hooks/use-extract-references.ts` — Upload + extraction state machine
-- `src/hooks/use-batch-extract.ts` — Multi-PDF sequential batch processing with abort support
+- `src/hooks/use-batch-extract.ts` — Unified extraction queue (single + batch) with abort, resume, retry, append
+- `src/hooks/use-notification-sound.ts` — Web Audio API chime on extraction completion (no audio files)
 - `src/hooks/use-export-bibtex.ts` — Export logic
 - `src/hooks/use-workspace.ts` — Workspace state (localStorage, V2 schema, O(1) dedup with bigram similarity)
 - `src/lib/api-client.ts` — Backend API functions (extract, discovery, health, auth, resolveByDoi)
 - `src/lib/types.ts` — TypeScript types (Reference, ExtractResponse, WorkspaceEntry, BatchFileResult, etc.)
 - `src/lib/text-utils.ts` — Shared text utilities (normalizeText, buildBigrams, buildPaperId, titleSimilarity)
-- `src/lib/constants.ts` — Shared constants (GROBID instance defaults, storage keys)
+- `src/lib/constants.ts` — Shared constants (GROBID instance defaults, storage keys, Scholar search base URL)
 
 ## Current Delivery Snapshot
 
@@ -133,6 +133,9 @@ Implemented now:
 - Unmatched Discovery (`/api/discovery/check`) — probe CrossRef/S2/DBLP availability
 - App-level navigation (Extract | Workspace tabs)
 - Instance notice banner (self-hosted info, rate limits, GitHub CTA)
+- Notification chime on extraction completion (Web Audio API, no audio files)
+- Google Scholar search button on all references (Extract + Workspace)
+- Clickable title links + DOI links in workspace entry cards
 - Frontend vitest test suite (16 tests: workspace dedup + component tests)
 - Backend pytest suite (84 tests)
 
