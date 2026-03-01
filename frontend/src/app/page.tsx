@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PdfUploadZone } from "@/components/pdf-upload-zone";
 import { ProgressIndicator } from "@/components/progress-indicator";
 import { ReferenceList } from "@/components/reference-list";
@@ -9,6 +9,7 @@ import { BatchSummary } from "@/components/batch-summary";
 import { useExtractReferences } from "@/hooks/use-extract-references";
 import { useBatchExtract } from "@/hooks/use-batch-extract";
 import { useWorkspace } from "@/hooks/use-workspace";
+import { useNotificationSound } from "@/hooks/use-notification-sound";
 import { PasswordGate } from "@/components/password-gate";
 import {
   checkDiscovery,
@@ -55,6 +56,8 @@ export default function Home() {
     cancelBatch,
     resetBatch,
   } = useBatchExtract();
+  const { initialize: initSound, play: playDoneSound } =
+    useNotificationSound();
   const {
     stats: workspaceStats,
     addReferences,
@@ -128,6 +131,7 @@ export default function Home() {
 
   const handleUpload = useCallback(
     (files: File[]) => {
+      void initSound(); // Satisfy autoplay policy on user gesture
       if (files.length === 1) {
         setViewMode("single");
         setCurrentPaper({
@@ -140,8 +144,25 @@ export default function Home() {
       setViewMode("batch");
       void startBatch(files, grobidInstanceId, addReferences);
     },
-    [extract, grobidInstanceId, startBatch, addReferences]
+    [extract, grobidInstanceId, startBatch, addReferences, initSound]
   );
+
+  // Play notification chime when extraction finishes
+  const prevStageRef = useRef(stage);
+  const prevBatchStageRef = useRef(batchStage);
+  useEffect(() => {
+    if (prevStageRef.current !== "done" && stage === "done") {
+      playDoneSound();
+    }
+    prevStageRef.current = stage;
+  }, [stage, playDoneSound]);
+  useEffect(() => {
+    const prev = prevBatchStageRef.current;
+    if (prev !== "done" && batchStage === "done") {
+      playDoneSound();
+    }
+    prevBatchStageRef.current = batchStage;
+  }, [batchStage, playDoneSound]);
   const handleReset = useCallback(() => {
     setCurrentPaper(null);
     reset();

@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SCHOLAR_SEARCH_BASE } from "@/lib/constants";
 import { useExportBibtex } from "@/hooks/use-export-bibtex";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { DedupStatus, GroupByMode, WorkspaceEntry } from "@/lib/types";
@@ -37,12 +38,28 @@ function WorkspaceEntryCard({
   onUpdateBibtex: (entryId: string, bibtex: string | null) => void;
 }) {
   const hasOverride = entry.override_bibtex != null;
+  const titleText = entry.reference.title || "Untitled reference";
+  const scholarUrl = entry.reference.title
+    ? `${SCHOLAR_SEARCH_BASE}${encodeURIComponent(entry.reference.title)}`
+    : null;
+  const titleLink = entry.reference.url || scholarUrl;
 
   return (
     <article className="rounded-lg border p-3 space-y-1">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="font-medium text-sm">
-          {entry.reference.title || "Untitled reference"}
+          {titleLink ? (
+            <a
+              href={titleLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline underline-offset-2"
+            >
+              {titleText}
+            </a>
+          ) : (
+            titleText
+          )}
         </p>
         <div className="flex items-center gap-1.5">
           {hasOverride && (
@@ -56,10 +73,33 @@ function WorkspaceEntryCard({
         </div>
       </div>
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <p className="text-xs text-muted-foreground">
-          Occurrences: {entry.occurrence_count} · Sources:{" "}
-          {entry.source_refs.length}
-        </p>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>
+            Occurrences: {entry.occurrence_count} · Sources:{" "}
+            {entry.source_refs.length}
+          </span>
+          {entry.reference.doi && (
+            <a
+              href={`https://doi.org/${encodeURIComponent(entry.reference.doi)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] text-primary hover:underline"
+            >
+              DOI
+            </a>
+          )}
+          {scholarUrl && (
+            <a
+              href={scholarUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+            >
+              <Search className="h-3 w-3" />
+              Scholar
+            </a>
+          )}
+        </div>
         <BibtexEditor entry={entry} onSave={onUpdateBibtex} />
       </div>
     </article>

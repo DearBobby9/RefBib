@@ -14,6 +14,7 @@ import {
   MatchStatus,
   Reference,
 } from "@/lib/types";
+import { SCHOLAR_SEARCH_BASE } from "@/lib/constants";
 
 const STATUS_STYLES: Record<MatchStatus, { label: string; variant: "default" | "secondary" | "destructive" }> = {
   matched: { label: "Matched", variant: "default" },
@@ -27,7 +28,6 @@ const SOURCE_LABELS: Record<string, string> = {
   dblp: "DBLP",
   grobid_fallback: "GROBID",
 };
-const SCHOLAR_SEARCH_BASE = "https://scholar.google.com/scholar?q=";
 const DISCOVERY_SOURCE_LABELS: Record<DiscoverySource, string> = {
   crossref: "CrossRef",
   semantic_scholar: "S2",
@@ -191,7 +191,7 @@ export function ReferenceItem({
                 ⚠ May not be exact match — verify before using
               </span>
             )}
-            {reference.match_status === "unmatched" && scholarSearchUrl && (
+            {scholarSearchUrl && (
               <a
                 href={scholarSearchUrl}
                 target="_blank"
@@ -200,7 +200,7 @@ export function ReferenceItem({
                 onClick={(e) => e.stopPropagation()}
               >
                 <Search className="h-3 w-3" />
-                Search on Scholar
+                Scholar
               </a>
             )}
             {reference.match_status === "unmatched" && onCheckAvailability && (
