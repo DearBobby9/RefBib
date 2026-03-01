@@ -12,24 +12,27 @@ A public hosted instance is available at **[ref-bib.vercel.app](https://ref-bib.
 
 > **Note:** The public instance runs on shared free-tier infrastructure with limited capacity. For regular use, please [self-host your own instance](#quick-start) — it only takes a few minutes.
 
-## Current Status (February 2026)
+## Current Status (March 2026)
 
 RefBib is at **Phase 2.5** — a fully-featured reference extraction and management tool.
 
 ### Implemented
 
 **Core Extraction**
-- Single PDF upload (drag-and-drop or file picker)
-- Multi-PDF batch upload (sequential processing, up to 20 files per batch)
+- Unified extraction queue — single file and batch use the same flow (single file auto-expands)
+- Multi-PDF batch upload (drag-and-drop, up to 20 files per batch, sequential processing)
+- Append more PDFs at any stage — "Add more PDFs" button during processing or on results page
+- Batch resume/retry — resume remaining pending files, retry individual failed files
 - Reference extraction via GROBID with automatic multi-instance fallback
 - BibTeX resolution waterfall: CrossRef → Semantic Scholar → DBLP → GROBID fallback `@misc`
 - Match status labeling (`Matched` / `Fuzzy` / `Unmatched`)
 - Manual DOI resolution for unmatched references (paste a DOI → get BibTeX)
+- Notification chime on extraction completion
 
 **Discovery & Search**
 - Unmatched availability check (`Check availability`) across CrossRef / Semantic Scholar / DBLP
 - Search + status filter + select all / deselect all
-- Google Scholar search link for unmatched references
+- Google Scholar search link on all references
 
 **Workspace**
 - Local Workspace with automatic deduplication (DOI, fingerprint, bigram similarity)
@@ -45,6 +48,7 @@ RefBib is at **Phase 2.5** — a fully-featured reference extraction and managem
 - Password gate for hosted instances (`SITE_PASSWORD`)
 - Light/dark theme toggle
 - Self-hosted instance notice banner with rate limit info
+- Smooth accordion animation for per-file result expansion
 
 ### Not Yet Implemented
 
@@ -64,16 +68,16 @@ Writing a paper and reading through related work? When you find a relevant publi
 **Single-paper workflow:**
 1. Find a related paper in your field (conference/journal version works best)
 2. Upload the PDF to RefBib
-3. Get the full reference list as BibTeX in seconds
-4. Cherry-pick the entries you need for your own bibliography
+3. Results auto-expand — cherry-pick the entries you need
+4. Export as `.bib` or add to Workspace
 
-**Batch workflow (literature survey):**
-1. Collect multiple key papers in your field
-2. Drop them all into RefBib at once (up to 20 PDFs)
-3. Matched references are auto-added to your Workspace
+**Iterative workflow (literature survey):**
+1. Start with one or a few key papers — drop them into RefBib
+2. Review results, add what you need to Workspace
+3. Found more papers? Click "Add more PDFs" to append — no need to start over
 4. Review the deduplicated Workspace, resolve conflicts, and export a clean `.bib`
 
-This is especially useful when surveying a new topic — start from a few key papers, extract their references, and quickly build up a comprehensive `.bib` file.
+This is especially useful when surveying a new topic — start from a few key papers, extract their references, add more as you discover them, and incrementally build up a comprehensive `.bib` file.
 
 ## Quick Start
 
@@ -142,14 +146,16 @@ npm run dev
 ## How It Works
 
 ```text
-PDF(s) -> GROBID (parse references) -> BibTeX Lookup -> Extract view
+PDF(s) -> GROBID (parse references) -> BibTeX Lookup -> Results
                                          |- CrossRef (DOI -> BibTeX)
                                          |- Semantic Scholar (title search)
                                          |- DBLP (title search)
                                          `- GROBID fallback (@misc)
 
-Single PDF  -> Extract view -> select/filter -> export .bib or Add to Workspace
-Multi-PDF   -> Batch progress -> Batch summary -> auto-add matched to Workspace
+Upload      -> Processing progress -> Results (accordion per file)
+               [+ Add more PDFs]      [+ Add more PDFs / Resume / Retry]
+1 PDF       -> auto-expanded results -> select/filter -> export or Add to Workspace
+N PDFs      -> per-file accordion -> review each -> auto-add matched to Workspace
 
 Workspace   -> search/filter -> group by venue/year -> export deduplicated .bib
             -> conflict queue -> merge / keep both
@@ -159,12 +165,13 @@ Unmatched   -> Check availability -> CrossRef / S2 / DBLP discovery
             -> Resolve by DOI -> paste DOI -> get verified BibTeX
 ```
 
-1. Upload one or more PDFs with reference sections
+1. Upload one or more PDFs with reference sections (append more at any time)
 2. GROBID extracts structured citations (title, authors, year, DOI, venue)
 3. Each reference is looked up via a waterfall strategy: CrossRef → Semantic Scholar → DBLP
 4. If no match is found, a fallback `@misc` entry is constructed from GROBID's parse
-5. **Single PDF:** Select the entries you want and download a `.bib` file or copy to clipboard
-6. **Batch upload (2+ PDFs):** Files are processed sequentially; matched/fuzzy refs are auto-added to Workspace
+5. **Single PDF:** Results auto-expand — select entries and download `.bib` or copy to clipboard
+6. **Multiple PDFs:** Click each file to expand its results; matched/fuzzy refs are auto-added to Workspace
+7. **Add more:** Append additional PDFs at any stage without losing existing results
 
 ### Workspace
 

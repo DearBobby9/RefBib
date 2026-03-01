@@ -81,13 +81,13 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 - `app/utils/text_similarity.py` — Title fuzzy matching
 
 ### Frontend (`frontend/`)
-- `src/app/page.tsx` — Main page (single upload → progress → results, batch upload → batch progress → batch summary)
+- `src/app/page.tsx` — Main page (unified queue: upload → batch progress → batch summary, single file auto-expands)
 - `src/app/workspace/page.tsx` — Workspace page (search/filter, dedup stats, source papers, conflict queue, analytics, export)
 - `src/components/pdf-upload-zone.tsx` — Drag-and-drop PDF upload (supports multi-file, max 20)
 - `src/components/reference-list.tsx` — Results display with select/filter + DOI resolution override
 - `src/components/reference-item.tsx` — Individual reference card (title links, Scholar search for all statuses, fuzzy warnings, DOI resolve input)
-- `src/components/batch-progress.tsx` — Batch processing progress with per-file status
-- `src/components/batch-summary.tsx` — Batch results summary with stats grid + "Go to Workspace" CTA
+- `src/components/batch-progress.tsx` — Processing progress with per-file status + "Add more" append button
+- `src/components/batch-summary.tsx` — Results with Radix Collapsible accordion, resume/retry, auto-expand for single file, append button
 - `src/components/conflict-resolver.tsx` — Interactive conflict merge/keep-both UI
 - `src/components/bibtex-editor.tsx` — Dialog-based BibTeX override editor
 - `src/components/workspace-analytics.tsx` — Recharts dashboard (year bar, venue bar, match pie, most-cited)
@@ -100,7 +100,7 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 - `src/components/theme-toggle.tsx` — Sun/Moon dark mode toggle button
 - `src/components/password-gate.tsx` — Auth gate with server health check + retry for cold starts
 - `src/components/settings-dialog.tsx` — GROBID instance selection + health check
-- `src/components/export-toolbar.tsx` — Export .bib / copy to clipboard + Add to Workspace
+- `src/components/export-toolbar.tsx` — Export .bib / copy to clipboard + Add to Workspace (compact prop for nested contexts)
 - `src/components/filter-bar.tsx` — Filter by match status
 - `src/components/bibtex-preview.tsx` — BibTeX syntax-highlighted preview
 - `src/hooks/use-batch-extract.ts` — Unified extraction queue (single + batch) with abort, resume, retry, append
@@ -116,8 +116,12 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 
 Implemented now:
 
-- Single PDF upload end-to-end extraction flow
+- Unified extraction queue — single file and batch use the same flow (single file = batch of 1, auto-expanded)
 - Multi-PDF batch upload (sequential processing, max 20, auto-add matched/fuzzy to workspace)
+- Append PDFs at any stage ("Add more PDFs" button during processing or on results page)
+- Batch resume/retry — resume remaining pending files, retry individual failed files
+- Smooth accordion animation (Radix Collapsible + tw-animate-css) for per-file result expansion
+- Abort handling with status revert — cancel leaves files in correct state (pending/error, not stuck processing)
 - GROBID instance picker + health checks + automatic fallback chain
 - Match status UX (`matched` / `fuzzy` / `unmatched`) with search + status filter
 - Manual DOI resolution for unmatched references (`/api/resolve-doi` + inline UI)
@@ -162,7 +166,11 @@ Not implemented yet:
 - Workspace dedup uses O(1) lookup maps (doiMap, fingerprintMap) with bigram similarity fallback (thresholds: ≥0.95 auto-merge, 0.88–0.95 conflict, <0.88 unique).
 - Discovery endpoint uses `DiscoveryReferenceInput` model (decoupled from internal `ParsedReference`) with DOI regex validation and field length caps.
 - Shared constants in `src/lib/constants.ts` to avoid duplication across components.
-- Batch upload processes files sequentially (not concurrently) to respect API rate limits. Max 20 files per batch.
+- Unified queue model: single file and batch share the same `useBatchExtract` hook. No separate `useExtractReferences`. Single file = batch of 1 with auto-expand in BatchSummary.
+- `appendFiles` uses eager ref sync (`fileResultsRef.current = next`) inside the state updater so `resumeBatch` can see appended files immediately without waiting for React re-render.
+- `startBatch` iterates the closed-over `files` param (won't see appended files); appended files are processed by subsequent `resumeBatch` calls.
+- Abort revert pattern: all async paths (startBatch, resumeBatch, retryFile) revert in-flight file status before returning on abort — prevents files stuck in "processing".
+- Batch upload processes files sequentially (not concurrently) to respect API rate limits. No hardcoded file limit in the hook; PdfUploadZone enforces max 20.
 - DOI resolution: `/api/resolve-doi` strips URL prefixes (`https://doi.org/`, `doi:`) and validates format. Uses CrossRef `_lookup_by_doi` → JSON fallback.
 - DOI resolution uses `resolvedOverrides: Map<number, Partial<Reference>>` pattern in `reference-list.tsx` to overlay resolved data without mutating original extract response.
 - Workspace search filters entries client-side; conflict queue and analytics always use unfiltered data to avoid hiding important items.
@@ -174,7 +182,7 @@ Not implemented yet:
 - **Phase 1 (MVP)** ✅: Single PDF → full reference BibTeX list → copy/download. Filter by match status. GROBID instance selection + fallback.
 - **Phase 1.5 (MVP+)** ✅: Workspace with dedup + discovery + navigation.
 - **Phase 2 (Workspace Features)** ✅: Conflict resolution, BibTeX editor, analytics dashboard (Recharts), venue/year grouping.
-- **Phase 2.5 (Batch + Search + DOI)** ✅: Multi-PDF batch upload, workspace search/filter, manual DOI resolution.
+- **Phase 2.5 (Batch + Search + DOI)** ✅: Multi-PDF batch upload, workspace search/filter, manual DOI resolution, unified queue model, append support, resume/retry, smooth accordion.
 - **Phase 3**: Multi-workspace management, semantic topic clustering
 - **Phase 4**: Overleaf integration, Chrome extension, citation graph visualization
 
