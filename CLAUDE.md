@@ -82,7 +82,7 @@ docker run --rm -p 8070:8070 grobid/grobid:0.8.2-crf
 
 ### Frontend (`frontend/`)
 - `src/app/page.tsx` — Main page (unified queue: upload → batch progress → batch summary, single file auto-expands)
-- `src/app/workspace/page.tsx` — Workspace page (search/filter, dedup stats, source papers, conflict queue, analytics, export)
+- `src/app/workspace/page.tsx` — Workspace page (search/filter, dedup stats, source papers, conflict queue, analytics, export); WorkspaceEntryCard displays authors (first 3 + "et al.") and venue/year metadata
 - `src/components/pdf-upload-zone.tsx` — Drag-and-drop PDF upload (supports multi-file, max 20)
 - `src/components/reference-list.tsx` — Results display with select/filter + DOI resolution override
 - `src/components/reference-item.tsx` — Individual reference card (title links, Scholar search for all statuses, fuzzy warnings, DOI resolve input)
@@ -140,7 +140,8 @@ Implemented now:
 - Notification chime on extraction completion (Web Audio API, no audio files)
 - Google Scholar search button on all references (Extract + Workspace)
 - Clickable title links + DOI links in workspace entry cards
-- Frontend vitest test suite (16 tests: workspace dedup + component tests)
+- Workspace card authors display (first 3 + "et al.") and venue/year metadata
+- Frontend vitest test suite (22 tests: workspace dedup + component tests + workspace card metadata)
 - Backend pytest suite (84 tests)
 
 Not implemented yet:
