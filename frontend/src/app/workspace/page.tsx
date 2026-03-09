@@ -72,6 +72,21 @@ function WorkspaceEntryCard({
           </Badge>
         </div>
       </div>
+      {entry.reference.authors.length > 0 && (
+        <p className="text-xs text-muted-foreground truncate">
+          {entry.reference.authors.slice(0, 3).join(", ")}
+          {entry.reference.authors.length > 3 && " et al."}
+        </p>
+      )}
+      {(entry.reference.venue || entry.reference.year) && (
+        <p className="text-xs text-muted-foreground">
+          {entry.reference.venue && (
+            <span className="italic">{entry.reference.venue}</span>
+          )}
+          {entry.reference.venue && entry.reference.year && " · "}
+          {entry.reference.year && <span>{entry.reference.year}</span>}
+        </p>
+      )}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>
