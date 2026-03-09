@@ -141,7 +141,7 @@ Implemented now:
 - Google Scholar search button on all references (Extract + Workspace)
 - Clickable title links + DOI links in workspace entry cards
 - Workspace card authors display (first 3 + "et al.") and venue/year metadata
-- Frontend vitest test suite (22 tests: workspace dedup + component tests + workspace card metadata)
+- Frontend vitest test suite (23 tests: workspace dedup + component tests + workspace card metadata)
 - Backend pytest suite (84 tests)
 
 Not implemented yet:

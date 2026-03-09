@@ -109,6 +109,16 @@ describe("WorkspaceEntryCard — authors & venue/year", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders exactly 3 authors without et al.", () => {
+    const card = renderCard({
+      authors: ["Vaswani, A.", "Shazeer, N.", "Parmar, N."],
+    });
+    expect(
+      card.getByText("Vaswani, A., Shazeer, N., Parmar, N.")
+    ).toBeInTheDocument();
+    expect(card.queryByText(/et al\./)).not.toBeInTheDocument();
+  });
+
   it("renders venue and year when both present", () => {
     const card = renderCard({ venue: "NeurIPS", year: 2017 });
     expect(card.getByText("NeurIPS")).toBeInTheDocument();
